@@ -1,0 +1,14 @@
+crewai
+crewai-tools[mcp]
+mcp
+fastmcp
+transformers
+torch
+scikit-learn
+pandas
+pydantic
+fastapi
+uvicorn
+python-dotenv
+numpy
+matplotlib
