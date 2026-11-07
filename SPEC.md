@@ -1,6 +1,6 @@
 # Especificação — Detecção experimental de anomalias transacionais
 
-Status: ajustes da Fase 3 concluídos; validação pelo usuário pendente. Fase 4 não iniciada.
+Status: Fases 1–3 concluídas. Implementação da Fase 4 e testes concluídos; a tentativa real única foi bloqueada pelo provedor (HTTP 404 para o modelo configurado), então não houve relatório real para auditar. Fase 4 aguarda novo modelo e autorização para outra tentativa; Fase 5 não iniciada.
 
 ## 1. Contexto e objetivo
 
@@ -99,3 +99,22 @@ Todos os números desta especificação vêm de dados gerados sinteticamente, de
 - [x] Métricas temporais dos três cenários e ganho sobre acaso usando prevalência real registrados.
 - [x] Usuário aprovou as descrições.
 - [x] Auditoria mostra 6 descrições por classe e verifica frase compartilhada entre grupos.
+
+## 9. Fase 4 — agentes e relatório de prioridade
+
+### Implementação
+
+- `config/agents.yaml` define Analista SQL, Cientista de Dados e Redator Executivo; `config/tasks.yaml` e `Process.sequential` conectam as três tarefas.
+- O Analista usa `MCPServerAdapter` por stdio com `sys.executable`. O servidor aplica o authorizer do SQLite e permite leitura somente de `clientes` e `transacoes`; `rotulos_fraude` continua negada pelo próprio SQLite.
+- `src/crew/tools.py` calcula o ranking somente com as features numéricas existentes, usando `USE_TEXT_FEATURES=false` como padrão, Isolation Forest com semente fixa e top-10. As três features são ordenadas por sensibilidade local heurística; a descrição é transportada apenas como contexto marcado “texto livre, não evidência”.
+- O esquema `output_pydantic` contém casos (`id_transacao`, `posicao`, `resumo`, `fatores`), recomendações e limitações. O relatório final preserva campos/valores da ferramenta e não aceita IDs, posições ou features divergentes. A descrição não fundamenta conclusões; os scores não são probabilidades.
+- A execução `--dry-run` não inicializa CrewAI/MCP nem chama LLM; produz relatório determinístico e audita IDs, datas, valores e features diretamente contra o SQLite em modo somente leitura.
+- Restrições de custo configuradas: `max_rpm=5`, `max_iter=2`, temperatura `0.1`, saída limitada e top-10.
+- `google-genai` foi instalado apenas na `.venv` e incluído em `requirements.txt`; CrewAI instalado: 1.15.34. `pip check` não apontou conflitos.
+
+### Verificações e pendência
+
+- A suíte completa executada com o Python da `.venv`: 16 testes passaram. Os casos de autorização cobrem acesso direto, identificador entre aspas, alias, CTE, JOIN, subconsulta, UNION, ATTACH e PRAGMA.
+- O comando `python -m src.crew.main --dry-run` terminou com sucesso; a auditoria determinística confirmou os dez IDs, datas, valores e features contra o banco.
+- Foi feita uma única tentativa real. O servidor MCP iniciou, mas o provedor retornou HTTP 404 informando que o modelo configurado não está disponível para novos usuários. Nenhum relatório real foi produzido; por isso, IDs e valores de um relatório real não puderam ser conferidos. Não repetir a chamada sem atualizar `LLM_MODEL` e obter autorização.
+- A validação de fatos/IDs é específica da Fase 4; guardrails estritos continuam fora de escopo até a Fase 5.

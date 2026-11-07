@@ -1,0 +1,32 @@
+consulta_sql:
+  description: >
+    Chame describe_schema e depois run_select usando apenas transacoes, com
+    no máximo dez registros em ordem de ID. Retorne somente campos estruturados
+    e marque descricao como "texto livre, não evidência". Não consulte nem infira
+    rótulos. Não faça afirmações além dos resultados das ferramentas.
+  expected_output: >
+    Resumo conciso do schema e dos registros retornados pelas ferramentas MCP,
+    incluindo a ressalva sobre descricao.
+
+ranking_numerico:
+  description: >
+    Execute a ferramenta de ranking numérico. Preserve literalmente seus IDs,
+    posições, campos, valores e features influentes. Não altere nem complemente
+    os resultados. Trate descricao somente como "texto livre, não evidência".
+  expected_output: >
+    O JSON completo do top-10 produzido pela ferramenta numérica, sem alterações.
+
+relatorio_executivo:
+  description: >
+    Produza o relatório exclusivamente com dados retornados pelas ferramentas e
+    com os contextos das tarefas anteriores. Inclua os dez casos na ordem e nas
+    posições fornecidas. Cada resumo deve citar tipo, canal, categoria, cidade,
+    data/hora e valor exatamente como fornecidos; fatores devem repetir as três
+    features e valores da ferramenta. A descricao é "texto livre, não evidência"
+    e não pode fundamentar afirmações. Use "prioridade de revisão" e posições
+    no ranking. O score é um ranking heurístico, não uma medida de probabilidade.
+    Não invente ou arredonde IDs, valores, datas ou features. Recomendações e
+    limitações devem ser gerais, sem inserir novos números ou fatos.
+  expected_output: >
+    Relatório JSON em output_pydantic com casos (id_transacao, posicao, resumo,
+    fatores), recomendações e limitações.

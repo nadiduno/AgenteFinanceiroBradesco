@@ -4,16 +4,16 @@
 
 - **Nome:** DataScience.
 - **Projeto:** AgenteFinanceiroBradesco.
-- **Estado:** verificação final da Fase 3 concluída e checkpoint preparado; aguarda validação do usuário. Nenhum trabalho da Fase 4 iniciado.
-- **Configuração:** `.env` local preparado com `GEMINI_API_KEY` vazia; arquivo ignorado pelo Git. A chave ainda não foi fornecida e o código da Fase 4 ainda não carrega essa variável.
-- **Arquivos:** `src/ml/transaction_anomaly.py`, `src/utils/db_gen.py`, `tests/test_transaction_anomaly.py`, `SPEC.md`, `mcp_servers/sqlite_server.py` e `data/transacoes.db` (local e ignorado pelo Git).
+- **Estado:** implementação da Fase 4 e dry-run validados; a única tentativa real foi recusada pelo provedor com HTTP 404 para o modelo configurado. Fase 4 não está operacionalmente fechada; nenhum relatório real foi auditado e a Fase 5 não foi iniciada.
+- **Configuração:** `.env` local ignorado pelo Git; presença de `LLM_MODEL` e `GEMINI_API_KEY` verificada sem imprimir ou registrar valores. A tentativa real falhou por modelo indisponível; não repetir sem atualização do modelo e autorização.
+- **Arquivos:** `config/agents.yaml`, `config/tasks.yaml`, `src/crew/main.py`, `src/crew/tools.py`, `tests/test_phase4.py`, `SPEC.md`, `requirements.txt`, `.env.example`, `mcp_servers/sqlite_server.py`, `src/ml/transaction_anomaly.py`, `src/utils/db_gen.py` e `data/transacoes.db` (local e ignorado pelo Git).
 - **Decisões:** Dados sintéticos em SQLite; rótulos de fraude isolados em `rotulos_fraude` para avaliação, fora de `transacoes`.
 
 ## Próximo passo
 
-- Fases 0–2 confirmadas; servidor SQLite somente leitura validado.
-- Fase 3: tabela de regras e teste de reprodutibilidade adicionados; testes e auditoria de afirmações textuais concluídos sem recalcular métricas. Aguardar validação do usuário.
-- Não iniciar a Fase 4 sem solicitação explícita.
+- Fases 0–3 concluídas; o usuário aprovou o início da Fase 4.
+- Fase 4: três agentes sequenciais, ferramenta numérica top-10, saída pydantic, modo determinístico e authorizer SQLite implementados. Suíte completa: 16 testes aprovados; `pip check`, compilação e dry-run aprovados.
+- Próximo passo: o usuário atualizar `LLM_MODEL` para um modelo acessível e autorizar explicitamente uma nova tentativa real. Só então auditar o relatório e decidir o checkpoint final; não iniciar Fase 5.
 
 ## Log de sessões
 
@@ -31,3 +31,4 @@
 - 2026-11-03: conferido que não havia `.env`, mas havia `.env.example` e `.gitignore` já excluía `.env`. Criado `.env` local com `GEMINI_API_KEY` vazia para preenchimento posterior; nenhuma chave foi fornecida. A implementação da Fase 4 ainda precisa carregar e consumir a variável.
 - 2026-11-03: descrições finais passaram a derivar de tipo/canal/categoria, com sorteio textual determinístico independente por transação e sem rótulo; canal app/web corrigido em transferências/boletos e jogos online/cripto não aparecem em POS. Banco regenerado com 5.000 transações e 100 rótulos separados; auditoria encontrou zero contradições verificadas, zero números/datas no texto, 23% de fraudes com texto inocente e 6,45% de normais com texto suspeito. Sete testes passaram. Avaliação final (corte 2023-10-21 17:07:36; 4.000/1.000; 30 fraudes no teste; cinco sementes): numéricas PR-AUC 0,7753 ± 0,0046, P@100 25,0%, ganho 8,33×; HF 0,7329 ± 0,0118, P@100 25,2% ± 0,84 pp, ganho 8,40× ± 0,28; TF-IDF compacto 0,5567 ± 0,0190, P@100 20,6% ± 0,55 pp, ganho 6,87× ± 0,18. HF codificou 102 descrições únicas em CPU; avaliação levou 406,9 s. Treino: 500 clientes, mediana/média de 8 transações, mínimo 1, máximo 19; 47 clientes com menos de cinco. ID 2003 atual está no treino (R$ 83,26; score numérico 0,2048, posição 24/4.000); a antiga linha R$ 2.335,54 foi substituída pela regeneração, portanto não é reproduzível. Fase 4 não iniciada.
 - 2026-11-04: adicionados `DESCRIPTION_RULES` para tipo/canal/categoria e testes de 5.000 linhas sem violações e de igualdade lógica entre bancos gerados pela mesma semente. Auditoria separada das afirmações encontrou 81 linhas divergentes: horário 36/40, dispositivo 35/55, local 10/13; ID 4562 às 17:43 tem `hora_fora_padrao_cliente=0`. SPEC registra que descrição livre não é evidência, modelo numérico padrão (`USE_TEXT_FEATURES=false`), limite de histórico curto (47 clientes <5), hipótese explicativa para ausência de ganho textual e ressalva de dados sintéticos. Nenhuma métrica da avaliação foi recalculada/alterada nesta verificação; não iniciar Fase 4.
+- 2026-11-07: início da Fase 4 solicitado. Verificado CrewAI 1.15.34 e instalado `google-genai` somente na `.venv`; atualizado `requirements.txt`; `pip check` sem conflitos. Criados agentes/tarefas sequenciais, ferramenta numérica top-10, relatório `output_pydantic`, dry-run determinístico, validação de IDs/valores/features e testes do authorizer contra SELECT direto, aspas, alias, CTE, JOIN, subconsulta, UNION, ATTACH e PRAGMA. Suíte: 16 testes aprovados; dry-run e auditoria SQLite somente leitura aprovados. Uma única execução real iniciou o MCP, mas o provedor respondeu HTTP 404 porque o modelo configurado não está disponível para novos usuários; nenhum relatório real foi emitido ou auditado. Não repetir sem modelo atualizado e nova autorização; Fase 5 não iniciada.

@@ -1,5 +1,6 @@
 crewai
 crewai-tools[mcp]
+google-genai
 mcp
 fastmcp
 transformers
