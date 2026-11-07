@@ -1,6 +1,6 @@
 # Especificação — Detecção experimental de anomalias transacionais
 
-Status: Fases 1–3 concluídas. Implementação da Fase 4 e testes concluídos; a tentativa real única foi bloqueada pelo provedor (HTTP 404 para o modelo configurado), então não houve relatório real para auditar. Fase 4 aguarda novo modelo e autorização para outra tentativa; Fase 5 não iniciada.
+Status: Fases 1–3 concluídas. Implementação da Fase 4 e testes concluídos; duas tentativas reais foram bloqueadas pelo provedor (HTTP 404 para o modelo inicialmente configurado e HTTP 503 por alta demanda na tentativa autorizada seguinte). Nenhum relatório real foi produzido para auditar. O `.env` local ainda requer atualização; não fazer nova tentativa sem modelo acessível e nova autorização. Fase 5 não iniciada.
 
 ## 1. Contexto e objetivo
 
@@ -116,5 +116,5 @@ Todos os números desta especificação vêm de dados gerados sinteticamente, de
 
 - A suíte completa executada com o Python da `.venv`: 16 testes passaram. Os casos de autorização cobrem acesso direto, identificador entre aspas, alias, CTE, JOIN, subconsulta, UNION, ATTACH e PRAGMA.
 - O comando `python -m src.crew.main --dry-run` terminou com sucesso; a auditoria determinística confirmou os dez IDs, datas, valores e features contra o banco.
-- Foi feita uma única tentativa real. O servidor MCP iniciou, mas o provedor retornou HTTP 404 informando que o modelo configurado não está disponível para novos usuários. Nenhum relatório real foi produzido; por isso, IDs e valores de um relatório real não puderam ser conferidos. Não repetir a chamada sem atualizar `LLM_MODEL` e obter autorização.
+- Foram feitas duas execuções reais de uma rodada cada. Na primeira, o MCP iniciou e o provedor retornou HTTP 404 para o modelo configurado. Depois de autorização, houve uma segunda execução com o modelo sugerido fornecido apenas no ambiente daquele processo; o MCP iniciou, mas o provedor retornou HTTP 503 por alta demanda, após retries internos do SDK. O `.env` local continua com o identificador antigo. Nenhum relatório real foi produzido; por isso, IDs e valores de um relatório real não puderam ser conferidos. Não fazer nova tentativa sem atualizar o `.env` para modelo acessível e obter nova autorização.
 - A validação de fatos/IDs é específica da Fase 4; guardrails estritos continuam fora de escopo até a Fase 5.
