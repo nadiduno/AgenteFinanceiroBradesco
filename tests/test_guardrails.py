@@ -1,4 +1,5 @@
 import copy
+import io
 import json
 import sqlite3
 import tempfile
@@ -12,7 +13,12 @@ from pydantic import ValidationError
 from src.crew import main as crew_main
 from src.crew.guardrails import generate_validated_report, validate_report
 from src.crew.schemas import ExecutiveReport
-from src.crew.tools import _FEATURE_LABELS, _format_currency_brl, build_deterministic_report
+from src.crew.tools import (
+    _FEATURE_LABELS,
+    _format_currency_brl,
+    _get_numeric_top_ten,
+    build_deterministic_report,
+)
 
 
 class GuardrailTests(unittest.TestCase):
@@ -84,6 +90,50 @@ class GuardrailTests(unittest.TestCase):
         self.report['casos'][0]['id_transacao'] = 999999
         with self.assertRaisesRegex(ValueError, 'não existem'):
             self.validate()
+
+    def test_valid_report_cites_position_count_and_historical_ratio(self):
+        self.ranking[2]['features_mais_influentes'][0] = {
+            'nome': 'valor_z_cliente',
+            'rotulo': _FEATURE_LABELS['valor_z_cliente'],
+            'valor': '10',
+        }
+        candidate = build_deterministic_report(self.ranking)
+        candidate['recomendacoes'] = [
+            'Revisar os dez casos manualmente, seguindo a prioridade de revisão.',
+        ]
+        self.assertIn('posição 3', candidate['casos'][2]['resumo'])
+        self.assertIn('valor_vs_mediana_cliente=2.5;', candidate['casos'][2]['resumo'])
+        self.assertEqual(candidate['casos'][2]['fatores'][0], {
+            'nome': 'valor_vs_mediana_cliente',
+            'rotulo': 'razão do valor pela mediana histórica do cliente',
+            'valor': '2.5',
+        })
+        for raw in (candidate, json.dumps(candidate, ensure_ascii=False)):
+            with self.subTest(type=type(raw).__name__):
+                report, audit = self.validate(raw)
+                self.assertEqual(report, candidate)
+                self.assertTrue(audit['numeros_iguais_a_tool'])
+                self.assertFalse(report['degradado'])
+
+    def test_actual_dry_run_output_passes_own_validator_without_provider(self):
+        output = io.StringIO()
+        with (
+            patch.object(crew_main, '_prepare_model', side_effect=AssertionError('LLM proibido')),
+            patch.object(crew_main, '_run_real_report', side_effect=AssertionError('Provedor proibido')),
+            patch.dict('os.environ', {'USE_TEXT_FEATURES': 'false'}),
+            patch('sys.stdout', output),
+        ):
+            self.assertEqual(crew_main.main(['--dry-run']), 0)
+            ranking = _get_numeric_top_ten()
+        payload = json.loads(output.getvalue())
+        report, audit = validate_report(payload['relatorio'], ranking)
+        self.assertEqual(report, payload['relatorio'])
+        self.assertEqual(report, build_deterministic_report(ranking))
+        self.assertEqual(audit['ids_verificados'], 10)
+        self.assertFalse(report['degradado'])
+        self.assertTrue(all(value for key, value in audit.items() if key != 'ids_verificados'))
+        for key, value in audit.items():
+            self.assertEqual(payload['auditoria'][key], value)
 
     def test_existing_id_outside_top_ten_is_rejected(self):
         self.report['casos'][0]['id_transacao'] = 11
@@ -211,6 +261,11 @@ class GuardrailTests(unittest.TestCase):
                     ValueError, 'Linguagem proibida',
                 ):
                     self.validate(candidate)
+
+    def test_90_percent_chance_of_fraud_is_rejected(self):
+        self.report['recomendacoes'] = ['90% de chance de fraude']
+        with self.assertRaisesRegex(ValueError, 'Linguagem proibida'):
+            self.validate()
 
     def test_unknown_number_and_number_only_in_description_are_rejected(self):
         for text in ('Revisar 999999 casos.', 'Revisar 987654321 casos.'):

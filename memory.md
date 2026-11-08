@@ -4,7 +4,7 @@
 
 - **Nome:** DataScience.
 - **Projeto:** AgenteFinanceiroBradesco.
-- **Estado:** Fase 5 concluída offline: schemas estritos, fatos conferidos no banco/tool, números e linguagem validados, uma correção e fallback determinístico validado com `degradado=true`. Suíte completa: 63 testes aprovados. Integradas as mudanças offline da Fase 4 confirmadas pelo usuário. Fase 4 permanece pendente de relatório real.
+- **Estado:** Fase 5 concluída offline, com evidência adicional: 26 testes de guardrails e suíte de 66 testes aprovados sobre cópia de `e1d436d` acrescida somente de três testes. Relatório válido com posição/contagem/razão e dry-run real revalidado aprovados. Fase 4 permanece pendente de relatório real.
 - **Configuração:** `.env` local ignorado pelo Git; presença da configuração verificada sem imprimir ou registrar a chave. O `.env` ainda contém o identificador de modelo antigo; a segunda tentativa usou o valor autorizado somente no processo e falhou por alta demanda. Não tentar novamente sem atualização do `.env` e nova autorização.
 - **Arquivos:** `src/crew/schemas.py`, `src/crew/guardrails.py`, `src/crew/llm.py`, `src/crew/main.py`, `src/crew/tools.py`, `tests/test_guardrails.py`, `tests/test_phase4.py`, `tests/test_llm_retry.py`, configs YAML, `SPEC.md` e SQLite local ignorado pelo Git.
 - **Decisões:** Dados sintéticos em SQLite; rótulos de fraude isolados em `rotulos_fraude` para avaliação, fora de `transacoes`.
@@ -14,11 +14,13 @@
 - Fases 0–3 concluídas; o usuário aprovou o início da Fase 4.
 - Fase 4: três agentes sequenciais, ferramenta numérica top-10, saída pydantic, modo determinístico e authorizer SQLite implementados. Suíte completa: 16 testes aprovados; `pip check`, compilação e dry-run aprovados.
 - Revisão offline de 2026-11-08: 35 testes aprovados com `.venv\Scripts\python.exe -m unittest discover -s tests -v`; compilação e `git diff --check` aprovados. Dry-run completo confirma dez IDs, valores/datas do banco e features; sem chamadas reais.
-- Fase 5: 23 testes fabricados aprovados; dry-run com dez casos, resumos até 251 caracteres e auditoria de cidades/números/linguagem aprovada. Compilação e `git diff --check` aprovados.
-- Suíte completa da etapa: 63 testes aprovados, incluindo MCP stdio somente leitura e retries HTTP simulados.
-- Próximo passo: parar após o commit solicitado. Aguardar nova instrução antes de avançar ou chamar o provedor; não fazer push.
+- Fase 5: 23 testes originais e três testes de evidência adicionais: frase proibida com nome próprio, relatório válido com posição/contagem/razão histórica e saída real do dry-run revalidada sem provedor.
+- Suíte completa da evidência: 66 testes aprovados, incluindo 26 guardrails, MCP stdio somente leitura e retries HTTP simulados. Executada também em cópia isolada de `e1d436d` para excluir alterações concorrentes da Fase 6.
+- Próximo passo desta verificação: commit separado somente dos testes e desta documentação; não incluir alterações concorrentes da Fase 6 nem chamar o provedor. Aguardar nova instrução; não fazer push.
 
 ## Log de sessões
+
+- 2026-11-08: solicitada evidência de `e1d436d`, histórico e cobertura nominal dos sete casos fabricados. Todos já estavam cobertos; criada identificação própria para “90% de chance de fraude” e dois testes positivos (posição 3, “dez casos”, razão histórica; dry-run real revalidado). Relatório local válido passou com razão 18.1612 e auditoria completa; suíte da árvore durante a execução passou com 66 testes. Novas alterações concorrentes da Fase 6 foram detectadas; usuário confirmou aguardar estabilização e excluir esse trabalho do commit. Suíte repetida sobre cópia de `e1d436d` acrescida somente dos três testes: 66 testes aprovados em 123,370 s; todos os 26 guardrails aprovados. Commit separado somente de testes e memória. Nenhuma chamada ao provedor, instalação ou alteração do banco original.
 
 - 2026-11-08: Fase 5 solicitada sem provedor. Após três divergências de contexto, implementação pausada e retomada com confirmação do usuário para integrar alterações concorrentes. Schemas estritos e guardrails implementados; decisão: resumos factuais canônicos <=500 caracteres, fatores fechados com razão histórica no lugar do z-score, recomendações gerais e ressalvas obrigatórias. Redator usa JSON bruto validado localmente para evitar conversor/retries ocultos: uma correção com erro, depois fallback determinístico com `degradado=true`, também validado. 23 testes fabricados e suíte completa de 63 testes aprovados; dry-run completo, compilação e diff aprovados. Logs 429/503 são simulados e negação SQLite esperada. Nenhum provedor chamado nem dependência instalada. Commit e parada solicitados, sem push.
 
