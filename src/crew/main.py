@@ -6,7 +6,8 @@ from pathlib import Path
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel
+from src.crew.guardrails import generate_validated_report, validate_report
+from src.crew.schemas import ExecutiveReport
 
 from src.crew.tools import (
     _get_numeric_top_ten,
@@ -20,25 +21,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 AGENTS_CONFIG = PROJECT_ROOT / 'config' / 'agents.yaml'
 TASKS_CONFIG = PROJECT_ROOT / 'config' / 'tasks.yaml'
 MCP_SERVER = PROJECT_ROOT / 'mcp_servers' / 'sqlite_server.py'
-
-
-class ReportFactor(BaseModel):
-    nome: str
-    rotulo: str
-    valor: str
-
-
-class ReportCase(BaseModel):
-    id_transacao: int
-    posicao: int
-    resumo: str
-    fatores: list[ReportFactor]
-
-
-class ExecutiveReport(BaseModel):
-    casos: list[ReportCase]
-    recomendacoes: list[str]
-    limitacoes: list[str]
 
 
 def _read_configuration(path):
@@ -62,48 +44,28 @@ def _prepare_model():
             'GEMINI_API_KEY não está configurada no .env; configure-a para a '
             'execução real ou use --dry-run.'
         )
-    from crewai import LLM
+    if not model_name.startswith('gemini/'):
+        raise RuntimeError('LLM_MODEL deve usar o prefixo gemini/ nesta integração; use --dry-run.')
+    from google.genai.types import HttpOptions, HttpRetryOptions
+    from src.crew.llm import ReviewGeminiCompletion
 
-    return LLM(model=model_name, temperature=0.1, max_tokens=2048, timeout=60)
+    return ReviewGeminiCompletion(
+        model=model_name.removeprefix('gemini/'),
+        temperature=0.1,
+        max_output_tokens=2048,
+        timeout=60,
+        use_vertexai=False,
+        client_params={
+            'http_options': HttpOptions(
+                timeout=60_000,
+                retry_options=HttpRetryOptions(attempts=1),
+            ),
+        },
+    )
 
 
 def _validate_llm_report(candidate, ranking):
-    report = candidate.model_dump()
-    source_report = build_deterministic_report(ranking)
-    candidate_cases = report.get('casos', [])
-    source_cases = source_report['casos']
-    if len(candidate_cases) != len(source_cases):
-        raise ValueError('O Redator deve retornar exatamente dez casos.')
-
-    for candidate_case, source_case in zip(candidate_cases, source_cases):
-        if (
-            candidate_case['id_transacao'] != source_case['id_transacao']
-            or candidate_case['posicao'] != source_case['posicao']
-        ):
-            raise ValueError('O Redator alterou um ID ou posição do ranking.')
-        candidate_factors = {
-            (factor['nome'], factor['rotulo'], factor['valor'])
-            for factor in candidate_case['fatores']
-        }
-        source_factors = {
-            (factor['nome'], factor['rotulo'], factor['valor'])
-            for factor in source_case['fatores']
-        }
-        if candidate_factors != source_factors:
-            raise ValueError('O Redator alterou ou inventou features ou valores.')
-
-    for item in report['recomendacoes'] + report['limitacoes']:
-        if any(character.isdigit() for character in item):
-            raise ValueError(
-                'Recomendações e limitações não podem introduzir IDs, valores ou datas.'
-            )
-    rendered = json.dumps(report, ensure_ascii=False).casefold()
-    if 'probabilidade de fraude' in rendered:
-        raise ValueError('O relatório não pode usar a expressão proibida.')
-
-    source_report['recomendacoes'] = report['recomendacoes']
-    source_report['limitacoes'] = report['limitacoes']
-    return source_report
+    return validate_report(candidate, ranking)[0]
 
 
 def _run_real_report():
@@ -149,31 +111,39 @@ def _run_real_report():
             agent=scientist,
             context=[sql_task],
         )
-        executive_task = Task(
-            config=tasks_config['relatorio_executivo'],
-            agent=writer,
-            context=[sql_task, numeric_task],
-            output_pydantic=ExecutiveReport,
-        )
         crew = Crew(
             agents=[analyst, scientist, writer],
-            tasks=[sql_task, numeric_task, executive_task],
+            tasks=[sql_task, numeric_task],
             process=Process.sequential,
             verbose=False,
             max_rpm=5,
             memory=False,
         )
-        result = crew.kickoff()
+        crew.kickoff()
+        writer_context = json.dumps({
+            'dados_tool': ranking,
+            'formato_factual_obrigatorio': build_deterministic_report(ranking),
+            'schema': ExecutiveReport.model_json_schema(),
+        }, ensure_ascii=False)
 
-    generated = result.tasks_output[-1].pydantic
-    if not isinstance(generated, ExecutiveReport):
-        raise RuntimeError(
-            'O Redator não produziu a saída output_pydantic esperada; '
-            'nenhum relatório será apresentado como válido.'
-        )
-    report = _validate_llm_report(generated, ranking)
-    audit = verify_report_sources(report, ranking)
-    return report, audit
+        def generate(error_message):
+            description = tasks_config['relatorio_executivo']['description']
+            if error_message is not None:
+                description += (
+                    '\nA saída anterior foi rejeitada. Corrija somente o relatório '
+                    f'conforme este erro de validação:\n{error_message}'
+                )
+            # JSON bruto evita retries ocultos do conversor output_pydantic.
+            task = Task(
+                description=description,
+                expected_output=tasks_config['relatorio_executivo']['expected_output'],
+                agent=writer,
+            )
+            return writer.execute_task(task, context=writer_context)
+
+        report, _ = generate_validated_report(generate, ranking)
+        audit = verify_report_sources(report, ranking)
+        return report, audit
 
 
 def main(argv=None):
@@ -190,7 +160,7 @@ def main(argv=None):
 
     if args.dry_run:
         ranking = _get_numeric_top_ten()
-        report = build_deterministic_report(ranking)
+        report, _ = validate_report(build_deterministic_report(ranking), ranking)
         audit = verify_report_sources(report, ranking)
         print(json.dumps({
             'relatorio': report,

@@ -4,19 +4,26 @@
 
 - **Nome:** DataScience.
 - **Projeto:** AgenteFinanceiroBradesco.
-- **Estado:** implementação da Fase 4 e dry-run validados; duas execuções reais foram bloqueadas pelo provedor (HTTP 404 e HTTP 503). Fase 4 não está operacionalmente fechada; nenhum relatório real foi auditado e a Fase 5 não foi iniciada.
+- **Estado:** Fase 5 concluída offline: schemas estritos, fatos conferidos no banco/tool, números e linguagem validados, uma correção e fallback determinístico validado com `degradado=true`. Suíte completa: 63 testes aprovados. Integradas as mudanças offline da Fase 4 confirmadas pelo usuário. Fase 4 permanece pendente de relatório real.
 - **Configuração:** `.env` local ignorado pelo Git; presença da configuração verificada sem imprimir ou registrar a chave. O `.env` ainda contém o identificador de modelo antigo; a segunda tentativa usou o valor autorizado somente no processo e falhou por alta demanda. Não tentar novamente sem atualização do `.env` e nova autorização.
-- **Arquivos:** `config/agents.yaml`, `config/tasks.yaml`, `src/crew/main.py`, `src/crew/tools.py`, `tests/test_phase4.py`, `SPEC.md`, `requirements.txt`, `.env.example`, `mcp_servers/sqlite_server.py`, `src/ml/transaction_anomaly.py`, `src/utils/db_gen.py` e `data/transacoes.db` (local e ignorado pelo Git).
+- **Arquivos:** `src/crew/schemas.py`, `src/crew/guardrails.py`, `src/crew/llm.py`, `src/crew/main.py`, `src/crew/tools.py`, `tests/test_guardrails.py`, `tests/test_phase4.py`, `tests/test_llm_retry.py`, configs YAML, `SPEC.md` e SQLite local ignorado pelo Git.
 - **Decisões:** Dados sintéticos em SQLite; rótulos de fraude isolados em `rotulos_fraude` para avaliação, fora de `transacoes`.
 
 ## Próximo passo
 
 - Fases 0–3 concluídas; o usuário aprovou o início da Fase 4.
 - Fase 4: três agentes sequenciais, ferramenta numérica top-10, saída pydantic, modo determinístico e authorizer SQLite implementados. Suíte completa: 16 testes aprovados; `pip check`, compilação e dry-run aprovados.
-- Próximo passo: o usuário atualizar `LLM_MODEL` no `.env` para um modelo acessível e autorizar explicitamente outra execução real. Só então tentar novamente, auditar relatório/IDs/valores e decidir o fechamento da Fase 4; não iniciar Fase 5.
+- Revisão offline de 2026-11-08: 35 testes aprovados com `.venv\Scripts\python.exe -m unittest discover -s tests -v`; compilação e `git diff --check` aprovados. Dry-run completo confirma dez IDs, valores/datas do banco e features; sem chamadas reais.
+- Fase 5: 23 testes fabricados aprovados; dry-run com dez casos, resumos até 251 caracteres e auditoria de cidades/números/linguagem aprovada. Compilação e `git diff --check` aprovados.
+- Suíte completa da etapa: 63 testes aprovados, incluindo MCP stdio somente leitura e retries HTTP simulados.
+- Próximo passo: parar após o commit solicitado. Aguardar nova instrução antes de avançar ou chamar o provedor; não fazer push.
 
 ## Log de sessões
 
+- 2026-11-08: Fase 5 solicitada sem provedor. Após três divergências de contexto, implementação pausada e retomada com confirmação do usuário para integrar alterações concorrentes. Schemas estritos e guardrails implementados; decisão: resumos factuais canônicos <=500 caracteres, fatores fechados com razão histórica no lugar do z-score, recomendações gerais e ressalvas obrigatórias. Redator usa JSON bruto validado localmente para evitar conversor/retries ocultos: uma correção com erro, depois fallback determinístico com `degradado=true`, também validado. 23 testes fabricados e suíte completa de 63 testes aprovados; dry-run completo, compilação e diff aprovados. Logs 429/503 são simulados e negação SQLite esperada. Nenhum provedor chamado nem dependência instalada. Commit e parada solicitados, sem push.
+
+- 2026-11-08: nova revisão offline solicitada com commit. Clipping de apresentação do z-score a ±10 com marcador `limitado`, z-score bruto apenas na auditoria e razão pela mediana anterior do mesmo cliente para o Redator. Sem histórico ou mediana positiva, razão explicitamente indisponível. Modelo/ranking preservados; documentação declara base inteira, não avaliação de desempenho. MCPServerAdapter stdio com banco temporário confirmou linhas permitidas, rótulos recusados e nova consulta permitida; nenhum provedor chamado. Alterações concorrentes em tools/main e novos guardrails/schemas/testes foram identificados; validação interrompida, usuário confirmou preservar e integrar o estado atual. Suíte integrada: 63 testes aprovados; compilação e diff aprovados.
+- 2026-11-08: revisão offline solicitada. Confirmado com o usuário que são uma chamada inicial e três retries após 5, 15 e 45 segundos (quatro chamadas no máximo), apenas para 503/429. SDK sem retries internos e agentes com `max_retry_limit=0`; 401/404 recebem mensagem clara de configuração e falhas HTTP terminais bloqueiam novas chamadas da mesma instância para evitar retries do conversor. Nove cenários SQLite separados por nome de teste; suíte completa com 35 testes aprovados, sleeps simulados, compilação e diff aprovados. Relatório completo do dry-run salvo no espaço da sessão, com dez IDs/valores/datas/features verificados. Nenhum provedor chamado, nenhuma dependência instalada e nenhum commit criado nesta etapa.
 - 2026-11-02: nomeado o agente DataScience; generalizado o contrato, definidos guardrails e criados guias técnicos sob demanda. Nenhum domínio ou regra de negócio global foi presumido.
 - 2026-11-02: complementados os guias de coleta, NLP/RAG e multimodalidade/entrega; a tabela de roteamento correspondente já consta em `GEMINI.md`.
 - 2026-11-02: criado `docs/SPEC_TEMPLATE.md` como modelo de especificação por projeto; as instruções gerais agora orientam seu uso e a atualização de `memory.md` quando o escopo mudar.

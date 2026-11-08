@@ -5,6 +5,7 @@ analista_sql:
     Você valida a estrutura e recupera um pequeno conjunto de campos estruturados.
     Nunca tenta consultar rótulos de fraude nem interpreta descrições como evidência.
   max_iter: 2
+  max_retry_limit: 0
   max_rpm: 5
   allow_delegation: false
 
@@ -15,6 +16,7 @@ cientista_dados:
     Você usa o modelo numérico determinístico. Scores são posições relativas de
     revisão, não probabilidades; descrições são texto livre, não evidência.
   max_iter: 2
+  max_retry_limit: 0
   max_rpm: 5
   allow_delegation: false
 
@@ -23,9 +25,14 @@ redator_executivo:
   goal: Redigir um relatório estruturado baseado exclusivamente nas ferramentas e no contexto fornecido.
   backstory: >
     Você não cria IDs, valores, datas, fatores ou fatos. Cita campos estruturados
-    e features retornadas pelas ferramentas. Descrição é somente contexto: texto
+    e features retornadas pelas ferramentas. Cite valor_vs_mediana_cliente;
+    substitua o fator valor_z_cliente por essa razão, nunca cite z-scores brutos.
+    O top-10 usa a base inteira: ranking de revisão, não avaliação de desempenho.
+    Descrição é somente contexto: texto
     livre, não evidência. Use "prioridade de revisão" e a posição no ranking.
-    Nunca use a expressão "probabilidade de fraude".
+    Use "suspeita". Nunca use probabilidade, chance de fraude, porcentagem
+    ligada a fraude, fraude confirmada ou o nome da tabela de rótulos.
   max_iter: 2
+  max_retry_limit: 0
   max_rpm: 5
   allow_delegation: false

@@ -1,7 +1,5 @@
 import json
 import os
-import sqlite3
-from contextlib import closing
 from functools import lru_cache
 from pathlib import Path
 
@@ -27,6 +25,44 @@ _FEATURE_LABELS = {
     'idade_conta_destino_dias': 'idade da conta de destino em dias',
     'qtd_transacoes_ultima_hora': 'transações na última hora',
 }
+RANKING_SCOPE = (
+    'O top-10 é calculado sobre a base inteira: ranking de revisão, '
+    'não avaliação de desempenho.'
+)
+
+
+def _historical_value_ratios(transactions):
+    ordered = transactions.assign(
+        timestamp=pd.to_datetime(transactions['data_hora'], errors='raise')
+    ).sort_values(['timestamp', 'id'], kind='stable')
+    history = {}
+    ratios = {}
+    for row in ordered.itertuples():
+        values = history.setdefault(row.client_id, [])
+        median = float(np.median(values)) if values else None
+        ratios[row.Index] = (
+            float(row.valor) / median if median is not None and median > 0 else None
+        )
+        values.append(float(row.valor))
+    return [ratios[index] for index in transactions.index]
+
+
+def _report_factors(row):
+    factors = []
+    for feature in row['features_mais_influentes']:
+        if feature['nome'] == 'valor_z_cliente':
+            factors.append({
+                'nome': 'valor_vs_mediana_cliente',
+                'rotulo': 'razão do valor pela mediana histórica do cliente',
+                'valor': row['valor_vs_mediana_cliente'],
+            })
+        else:
+            factors.append({
+                'nome': feature['nome'],
+                'rotulo': feature['rotulo'],
+                'valor': feature['valor'],
+            })
+    return factors
 
 
 def _format_currency_brl(value):
@@ -40,10 +76,16 @@ def _serialize_feature_value(value):
     return f'{number:.6g}'
 
 
+def _bounded_z_score(value):
+    clipped = float(np.clip(value, -10, 10))
+    return {'valor': _serialize_feature_value(clipped), 'limitado': value != clipped}
+
+
 @lru_cache(maxsize=2)
 def _compute_numeric_top_ten(db_path):
     transactions = load_transactions(db_path)
     raw_features = _client_history_features(transactions)
+    value_ratios = _historical_value_ratios(transactions)
     scaler = StandardScaler()
     model_features = scaler.fit_transform(raw_features)
     detector = _fit_detector(model_features, random_state=42)
@@ -59,18 +101,30 @@ def _compute_numeric_top_ten(db_path):
     )
 
     ranking = []
+    audit_rows = []
     for position, (row_index, impacts) in enumerate(zip(order, influences), start=1):
         row = transactions.iloc[int(row_index)]
         raw_row = raw_features[int(row_index)]
+        raw_z = float(raw_row[0])
+        bounded_z = _bounded_z_score(raw_z)
+        ratio = value_ratios[int(row_index)]
+        audit_rows.append({
+            'id_transacao': int(row['id']),
+            'valor_z_cliente_bruto': raw_z,
+        })
         top_features = []
         for feature_name, impact in impacts[:3]:
             feature_index = NUMERIC_FEATURE_COLUMNS.index(feature_name)
-            top_features.append({
+            feature = {
                 'nome': feature_name,
                 'rotulo': _FEATURE_LABELS[feature_name],
-                'valor': _serialize_feature_value(raw_row[feature_index]),
+                'valor': bounded_z['valor'] if feature_name == 'valor_z_cliente'
+                else _serialize_feature_value(raw_row[feature_index]),
                 'impacto_local_heuristico': round(float(impact), 8),
-            })
+            }
+            if feature_name == 'valor_z_cliente':
+                feature['limitado'] = bounded_z['limitado']
+            top_features.append(feature)
         ranking.append({
             'id_transacao': int(row['id']),
             'posicao': position,
@@ -81,13 +135,19 @@ def _compute_numeric_top_ten(db_path):
             'data_hora': str(row['data_hora']),
             'valor': float(row['valor']),
             'valor_formatado': _format_currency_brl(float(row['valor'])),
+            'valor_z_cliente': bounded_z,
+            'valor_vs_mediana_cliente': (
+                _serialize_feature_value(ratio) if ratio is not None
+                else 'indisponível: histórico ausente ou mediana não positiva'
+            ),
+            'escopo_ranking': RANKING_SCOPE,
             'features_mais_influentes': top_features,
             'descricao_contexto': {
                 'classificacao': 'texto livre, não evidência',
                 'texto': str(row['descricao']),
             },
         })
-    return ranking
+    return {'ranking': ranking, 'auditoria': audit_rows}
 
 
 def _get_numeric_top_ten(db_path=DEFAULT_DB_PATH):
@@ -98,7 +158,7 @@ def _get_numeric_top_ten(db_path=DEFAULT_DB_PATH):
         raise ValueError(
             'A ferramenta da Fase 4 é somente numérica; defina USE_TEXT_FEATURES=false.'
         )
-    return _compute_numeric_top_ten(str(Path(db_path).resolve()))
+    return _compute_numeric_top_ten(str(Path(db_path).resolve()))['ranking']
 
 
 def numeric_top_ten_json():
@@ -115,6 +175,8 @@ def create_numeric_ranking_tool():
         Retorna ID e posição exatos, tipo, canal, categoria, cidade, data/hora,
         valor e as três features locais mais influentes. A descrição aparece apenas
         como contexto identificado por "texto livre, não evidência". Não acessa rótulos.
+        Ranking sobre a base inteira, não avaliação de desempenho. Z-score limitado
+        a ±10; cite valor_vs_mediana_cliente, nunca o z-score bruto.
         """
         return numeric_top_ten_json()
 
@@ -124,23 +186,15 @@ def create_numeric_ranking_tool():
 def build_deterministic_report(ranking):
     cases = []
     for row in ranking:
-        factors = [
-            {
-                'nome': feature['nome'],
-                'rotulo': feature['rotulo'],
-                'valor': feature['valor'],
-            }
-            for feature in row['features_mais_influentes']
-        ]
-        factor_text = ', '.join(
-            f"{feature['nome']}={feature['valor']}" for feature in factors
-        )
+        factors = _report_factors(row)
         summary = (
             f"Prioridade de revisão na posição {row['posicao']} do ranking; "
+            f"suspeita a verificar; "
             f"tipo={row['tipo']}; canal={row['canal']}; "
             f"categoria={row['categoria']}; cidade={row['cidade']}; "
-            f"data/hora={row['data_hora']}; valor={row['valor_formatado']}; "
-            f"features mais influentes: {factor_text}."
+            f"data/hora={row['data_hora']}; valor={_format_currency_brl(row['valor'])}; "
+            f"valor_vs_mediana_cliente={row['valor_vs_mediana_cliente']}; "
+            f"fatores detalhados na lista."
         )
         cases.append({
             'id_transacao': row['id_transacao'],
@@ -154,66 +208,18 @@ def build_deterministic_report(ranking):
             'Revisar manualmente os casos pela posição no ranking, sem tratar a ordem como decisão automática.',
         ],
         'limitacoes': [
+            RANKING_SCOPE,
             'O score é heurístico e representa somente uma posição relativa no ranking.',
             'A descrição é texto livre, não evidência; utilize os campos estruturados e as features.',
             'A ferramenta não lê rótulos e não valida ocorrência de fraude.',
         ],
+        'degradado': False,
     }
 
 
 def verify_report_sources(report, ranking, db_path=DEFAULT_DB_PATH):
-    expected_by_id = {row['id_transacao']: row for row in ranking}
-    cases = report['casos']
-    if len(cases) != len(ranking):
-        raise ValueError('O relatório deve conter exatamente os dez casos retornados pela ferramenta.')
+    from src.crew.guardrails import validate_report
 
-    cited_ids = [case['id_transacao'] for case in cases]
-    expected_ids = [row['id_transacao'] for row in ranking]
-    if cited_ids != expected_ids:
-        raise ValueError('IDs do relatório divergem do top-10 retornado pela ferramenta.')
-
-    path = Path(db_path)
-    placeholders = ','.join('?' for _ in cited_ids)
-    with closing(sqlite3.connect(f'{path.resolve().as_uri()}?mode=ro', uri=True)) as connection:
-        database_rows = connection.execute(
-            f'SELECT id, valor, data_hora FROM transacoes WHERE id IN ({placeholders})',
-            cited_ids,
-        ).fetchall()
-    database_by_id = {
-        int(row[0]): {'valor': float(row[1]), 'data_hora': str(row[2])}
-        for row in database_rows
-    }
-    if set(database_by_id) != set(expected_ids):
-        raise ValueError('Um ou mais IDs citados não existem em transacoes.')
-
-    for case in cases:
-        source = expected_by_id[case['id_transacao']]
-        database = database_by_id[case['id_transacao']]
-        if database['valor'] != source['valor'] or database['data_hora'] != source['data_hora']:
-            raise ValueError('Valor ou data/hora da fonte mudou durante a execução.')
-        if case['posicao'] != source['posicao']:
-            raise ValueError('Posição no ranking divergente da ferramenta.')
-        if source['data_hora'] not in case['resumo'] or source['valor_formatado'] not in case['resumo']:
-            raise ValueError('O resumo alterou ou omitiu o valor ou a data/hora da fonte.')
-        expected_factors = {
-            (feature['nome'], feature['rotulo'], feature['valor'])
-            for feature in source['features_mais_influentes']
-        }
-        actual_factors = {
-            (feature['nome'], feature['rotulo'], feature['valor'])
-            for feature in case['fatores']
-        }
-        if actual_factors != expected_factors:
-            raise ValueError('Features ou valores citados divergem da ferramenta.')
-
-    textual_content = json.dumps(report, ensure_ascii=False).casefold()
-    if 'probabilidade de fraude' in textual_content:
-        raise ValueError('O relatório não pode chamar o score de probabilidade de fraude.')
-    for item in report['recomendacoes'] + report['limitacoes']:
-        if any(character.isdigit() for character in item):
-            raise ValueError('Recomendações e limitações não podem introduzir IDs, valores ou datas.')
-    return {
-        'ids_verificados': len(cited_ids),
-        'valores_e_datas_iguais_ao_banco': True,
-        'features_iguais_ao_top10': True,
-    }
+    audit = validate_report(report, ranking, db_path)[1]
+    audit['z_scores_brutos'] = _compute_numeric_top_ten(str(Path(db_path).resolve()))['auditoria']
+    return audit
