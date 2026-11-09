@@ -1,6 +1,6 @@
 # Especificação — Detecção experimental de anomalias transacionais
 
-Status: Fases 1–3 concluídas. Fase 5 implementada e validada offline, integrada à Fase 4. Duas tentativas reais anteriores foram bloqueadas pelo provedor (HTTP 404/503); nenhum relatório real foi produzido para auditar. O `.env` local ainda requer atualização; não fazer nova tentativa sem modelo acessível e nova autorização. Nenhuma chamada ao provedor nesta fase.
+Status: Fases 1–3 concluídas. Fase 5 implementada e validada offline, integrada à Fase 4. Fase 6 concluída; suíte, dry-run e smoke test Uvicorn local aprovados. As tentativas reais autorizadas foram bloqueadas pelo provedor (HTTP 404/503); nenhum relatório real foi produzido para auditar. Não tentar novamente sem modelo acessível no `.env` e nova autorização.
 
 ## 1. Contexto e objetivo
 
@@ -147,3 +147,82 @@ Todos os números desta especificação vêm de dados gerados sinteticamente, de
 - [x] Suíte completa: 63 testes aprovados com `.venv\Scripts\python.exe -m unittest discover -s tests -v`, incluindo MCP stdio somente leitura e retries HTTP simulados. Os logs HTTP 429/503 e a negação SQLite são cenários esperados dos testes, não chamadas reais.
 - Nenhuma chamada ao provedor, instalação de dependência ou alteração do banco local nesta fase. As mudanças offline concorrentes da Fase 4 foram integradas após confirmação explícita do usuário.
 - Os guardrails não calibram scores nem comprovam suspeita; recomendações gerais ainda exigem revisão humana. A integração com resposta real do provedor permanece não exercitada.
+
+## 11. Fase 6 — FastAPI
+
+### Contrato confirmado
+
+- `src/api/app.py`: `GET /health` público e `POST /analisar` autenticado
+  por `X-API-Key`, conferido contra `API_ACCESS_KEY`, independente do Gemini.
+  Chave ausente/incorreta recebe 401; servidor sem chave configurada, 503.
+- Entrada Pydantic estrita, sem campos extras: `top_n` inteiro de 1 a 20
+  (padrão 10) e `use_llm` booleano opcional (padrão false).
+- Saída direta `ExecutiveReport`, incluindo `degradado`, sem auditoria.
+  O schema aceita 1–20 casos; o validador exige exatamente os IDs, posições
+  e quantidade do ranking solicitado. Fases 4/5 e CLI preservam top-10.
+  Resumos, fatores, números, fatos e linguagem seguem os mesmos guardrails.
+- Modo determinístico não inicializa LLM/MCP nem usa provedor.
+  LLM somente com opt-in no payload e `ALLOW_LLM=true`; caso contrário,
+  a solicitação explícita de LLM recebe 403, não uma resposta silenciosa.
+- Crew e cálculo numérico fora do event loop, via threadpool.
+  `LLM_MAX_CALLS_PER_MINUTE` (padrão 5) limita chamadas nativas em janela
+  móvel de 60 segundos, compartilhada e protegida por lock por processo.
+  Limite excedido retorna 429. No caminho API não há retries HTTP;
+  a correção única do Redator continua sujeita ao mesmo orçamento.
+- `LLM_TIMEOUT_SECONDS` (padrão 60, positivo até 300) limita a espera HTTP
+  e o SDK; prazo excedido retorna 504. O guard cancela novas chamadas do
+  trabalho após expirar. Threads/HTTP já em curso não são terminados à força.
+  A resposta continua 504 se a crew encapsular ou suprimir a exceção do guard;
+  uma execução que ultrapassou o prazo não é apresentada como sucesso.
+- `CORS_ORIGINS` é array JSON de origens HTTP(S) exatas, sem wildcard,
+  credenciais ou caminho. Padrão vazio; origem não permitida recebe 403,
+  inclusive no preflight. Clientes sem Origin continuam sujeitos à chave.
+- Respostas de erro nunca incluem dados de entrada, exceções, caminhos,
+  chaves, traceback ou conteúdo da tabela de rótulos. UUID gerado pelo
+  servidor em cada requisição aparece em `X-Request-ID`, erros e logs.
+  Logs dos guardrails omitem o conteúdo da validação; logs de dependências
+  no contexto da requisição são sanitizados, preservando evento/nível/ID.
+- `.env` local não foi editado. Configuração inválida falha com mensagem
+  genérica; nenhuma chave é exposta pela rota de saúde ou OpenAPI.
+- SQLite inexistente é gerado no lifespan com semente 42, 5.000 transações
+  e 500 clientes; banco existente não é sobrescrito. `DATABASE_URL` local
+  é compartilhada entre ranking, guardrails e subprocesso MCP.
+- `requirements.txt` sem torch/transformers; extras em `requirements-hf.txt`.
+  Imports HF já são tardios; modelo padrão segue somente numérico.
+
+### Validação e limites
+
+- TestClient offline cobre saúde, autenticação, 422, CORS permitido/recusado,
+  top_n 1/10/20, relatório factual validado, opt-in duplo, threadpool,
+  limite entre requisições, timeout sem novas chamadas, erros/logs seguros
+  e geração reprodutível apenas se o banco estiver ausente.
+- Quota é por processo, não distribuída; múltiplos workers multiplicam o limite.
+  Primeira geração simultânea do mesmo banco não é suportada.
+- Não há deploy nem push nesta etapa.
+- Suíte completa: **86 testes aprovados** com
+  `.venv\Scripts\python.exe -m unittest discover -s tests -v` (328,468 s).
+  Após endurecer a tradução de exceções encapsuladas da crew para 429,
+  os dois testes específicos passaram com
+  `.venv\Scripts\python.exe -m unittest discover -s tests -p test_api.py -k rate_limit -v`
+  (65,070 s). São 87 casos distintos na árvore final, 21 deles da API.
+  Compilação de `src`/`tests` e `git diff --check` aprovados.
+- Conclusão na branch `fase-6`, criada de `7eef22f` com todas as alterações
+  pendentes preservadas, sem conflito. Suíte completa final: **90 testes
+  aprovados** (91,468 s), incluindo **24 da API**. `pip check`, compilação
+  e `git diff --check` aprovados; nenhuma dependência instalada.
+- Teste em subprocesso bloqueia os imports de `torch` e `transformers` e
+  confirma `/health` e análise determinística com relatório validado.
+  Saída LLM inválida é recusada com 500 genérico; timeouts encapsulados
+  ou suprimidos são testados com relógio simulado, sem provedor.
+- Smoke test adicional com servidor Uvicorn real em socket `127.0.0.1`
+  efêmero: `/health` 200; `/analisar` sem chave 401; chave efêmera gerada
+  com `secrets.token_urlsafe(32)` e mantida apenas em memória, com CORS local
+  permitido e análise determinística top-1 200; opt-in de LLM sem autorização
+  403. Servidor encerrado ao final. A chave não foi exibida nem persistida;
+  nenhuma chamada ao provedor foi feita.
+- Uma execução real, autorizada em 2026-11-08, falhou imediatamente com
+  HTTP 404: `gemini-2.5-flash` não está disponível para novos usuários; a
+  resposta do provedor recomenda `gemini-3.8-flash`. O cliente não fez retry
+  para 404, conforme política; nenhum relatório ou valor `degradado` foi
+  produzido. Não foi feita uma segunda execução; aguardar atualização do
+  modelo no `.env` e nova autorização.

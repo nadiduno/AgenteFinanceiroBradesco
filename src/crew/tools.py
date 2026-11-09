@@ -82,7 +82,7 @@ def _bounded_z_score(value):
 
 
 @lru_cache(maxsize=2)
-def _compute_numeric_top_ten(db_path):
+def _compute_numeric_top_ten(db_path, top_n=10):
     transactions = load_transactions(db_path)
     raw_features = _client_history_features(transactions)
     value_ratios = _historical_value_ratios(transactions)
@@ -90,7 +90,7 @@ def _compute_numeric_top_ten(db_path):
     model_features = scaler.fit_transform(raw_features)
     detector = _fit_detector(model_features, random_state=42)
     scores = -detector.decision_function(model_features)
-    order = np.argsort(-scores, kind='stable')[:10]
+    order = np.argsort(-scores, kind='stable')[:top_n]
     reference_values = np.median(model_features, axis=0)
     influences = _local_feature_sensitivities(
         detector,
@@ -140,7 +140,7 @@ def _compute_numeric_top_ten(db_path):
                 _serialize_feature_value(ratio) if ratio is not None
                 else 'indisponível: histórico ausente ou mediana não positiva'
             ),
-            'escopo_ranking': RANKING_SCOPE,
+            'escopo_ranking': RANKING_SCOPE.replace('top-10', f'top-{top_n}'),
             'features_mais_influentes': top_features,
             'descricao_contexto': {
                 'classificacao': 'texto livre, não evidência',
@@ -150,7 +150,9 @@ def _compute_numeric_top_ten(db_path):
     return {'ranking': ranking, 'auditoria': audit_rows}
 
 
-def _get_numeric_top_ten(db_path=DEFAULT_DB_PATH):
+def _get_numeric_top_ten(db_path=DEFAULT_DB_PATH, top_n=10):
+    if type(top_n) is not int or not 1 <= top_n <= 20:
+        raise ValueError('top_n deve ser inteiro entre 1 e 20.')
     enabled = os.getenv('USE_TEXT_FEATURES', 'false').strip().lower()
     if enabled not in {'true', 'false'}:
         raise ValueError('USE_TEXT_FEATURES deve ser true ou false.')
@@ -158,19 +160,21 @@ def _get_numeric_top_ten(db_path=DEFAULT_DB_PATH):
         raise ValueError(
             'A ferramenta da Fase 4 é somente numérica; defina USE_TEXT_FEATURES=false.'
         )
-    return _compute_numeric_top_ten(str(Path(db_path).resolve()))['ranking']
+    if top_n == 10:
+        return _compute_numeric_top_ten(str(Path(db_path).resolve()))['ranking']
+    return _compute_numeric_top_ten(str(Path(db_path).resolve()), top_n)['ranking']
 
 
 def numeric_top_ten_json():
     return json.dumps(_get_numeric_top_ten(), ensure_ascii=False)
 
 
-def create_numeric_ranking_tool():
+def create_numeric_ranking_tool(db_path=DEFAULT_DB_PATH, top_n=10):
     from crewai.tools import tool
 
     @tool('rank_numeric_transactions')
     def rank_numeric_transactions() -> str:
-        """Calcula o top-10 numérico de revisão com campos e features da tabela transacoes.
+        """Calcula o top solicitado de revisão com campos e features de transacoes.
 
         Retorna ID e posição exatos, tipo, canal, categoria, cidade, data/hora,
         valor e as três features locais mais influentes. A descrição aparece apenas
@@ -178,7 +182,7 @@ def create_numeric_ranking_tool():
         Ranking sobre a base inteira, não avaliação de desempenho. Z-score limitado
         a ±10; cite valor_vs_mediana_cliente, nunca o z-score bruto.
         """
-        return numeric_top_ten_json()
+        return json.dumps(_get_numeric_top_ten(db_path, top_n), ensure_ascii=False)
 
     return rank_numeric_transactions
 
@@ -208,7 +212,7 @@ def build_deterministic_report(ranking):
             'Revisar manualmente os casos pela posição no ranking, sem tratar a ordem como decisão automática.',
         ],
         'limitacoes': [
-            RANKING_SCOPE,
+            RANKING_SCOPE.replace('top-10', f'top-{len(ranking)}'),
             'O score é heurístico e representa somente uma posição relativa no ranking.',
             'A descrição é texto livre, não evidência; utilize os campos estruturados e as features.',
             'A ferramenta não lê rótulos e não valida ocorrência de fraude.',
@@ -217,9 +221,13 @@ def build_deterministic_report(ranking):
     }
 
 
-def verify_report_sources(report, ranking, db_path=DEFAULT_DB_PATH):
+def verify_report_sources(report, ranking, db_path=DEFAULT_DB_PATH, top_n=10):
     from src.crew.guardrails import validate_report
 
-    audit = validate_report(report, ranking, db_path)[1]
-    audit['z_scores_brutos'] = _compute_numeric_top_ten(str(Path(db_path).resolve()))['auditoria']
+    audit = validate_report(report, ranking, db_path, top_n)[1]
+    if top_n == 10:
+        computed = _compute_numeric_top_ten(str(Path(db_path).resolve()))
+    else:
+        computed = _compute_numeric_top_ten(str(Path(db_path).resolve()), top_n)
+    audit['z_scores_brutos'] = computed['auditoria']
     return audit

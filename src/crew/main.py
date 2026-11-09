@@ -8,6 +8,7 @@ import yaml
 from dotenv import load_dotenv
 from src.crew.guardrails import generate_validated_report, validate_report
 from src.crew.schemas import ExecutiveReport
+from src.ml.transaction_anomaly import DEFAULT_DB_PATH
 
 from src.crew.tools import (
     _get_numeric_top_ten,
@@ -31,7 +32,7 @@ def _read_configuration(path):
     return config
 
 
-def _prepare_model():
+def _prepare_model(timeout=60, call_guard=None):
     load_dotenv(PROJECT_ROOT / '.env')
     model_name = os.getenv('LLM_MODEL', '').strip()
     if not model_name:
@@ -49,43 +50,62 @@ def _prepare_model():
     from google.genai.types import HttpOptions, HttpRetryOptions
     from src.crew.llm import ReviewGeminiCompletion
 
-    return ReviewGeminiCompletion(
+    llm = ReviewGeminiCompletion(
         model=model_name.removeprefix('gemini/'),
         temperature=0.1,
         max_output_tokens=2048,
-        timeout=60,
+        timeout=timeout,
         use_vertexai=False,
         client_params={
             'http_options': HttpOptions(
-                timeout=60_000,
+                timeout=int(timeout * 1000),
                 retry_options=HttpRetryOptions(attempts=1),
             ),
         },
     )
+    if call_guard is not None:
+        llm.configure_call_guard(call_guard)
+    return llm
 
 
 def _validate_llm_report(candidate, ranking):
     return validate_report(candidate, ranking)[0]
 
 
-def _run_real_report():
-    llm = _prepare_model()
+def _run_real_report(top_n=10, db_path=DEFAULT_DB_PATH, call_guard=None, timeout=60):
+    api_mode = call_guard is not None
+    llm = _prepare_model(timeout, call_guard) if api_mode else _prepare_model()
     from crewai import Agent, Crew, Process, Task
     from crewai_tools.adapters.mcp_adapter import MCPServerAdapter
     from mcp import StdioServerParameters
 
-    ranking_tool = create_numeric_ranking_tool()
+    ranking_tool = (
+        create_numeric_ranking_tool(db_path, top_n) if api_mode
+        else create_numeric_ranking_tool()
+    )
     numeric_tool_result = ranking_tool.run()
     ranking = json.loads(numeric_tool_result)
-    if len(ranking) != 10:
-        raise ValueError('A ferramenta numérica não retornou exatamente dez casos.')
+    if len(ranking) != top_n:
+        raise ValueError('A ferramenta numérica não retornou a quantidade solicitada.')
 
     agents_config = _read_configuration(AGENTS_CONFIG)
     tasks_config = _read_configuration(TASKS_CONFIG)
+    if api_mode:
+        for configuration in (agents_config, tasks_config):
+            for values in configuration.values():
+                for key, value in values.items():
+                    if isinstance(value, str):
+                        values[key] = value.replace('top-10', f'top-{top_n}').replace(
+                            'dez', str(top_n),
+                        )
     mcp_parameters = StdioServerParameters(
         command=sys.executable,
         args=[str(MCP_SERVER)],
         cwd=str(PROJECT_ROOT),
+        env=(
+            {**os.environ, 'DATABASE_URL': f'sqlite:///{Path(db_path).resolve()}'}
+            if api_mode else None
+        ),
     )
     with MCPServerAdapter(mcp_parameters) as mcp_tools:
         analyst = Agent(
@@ -141,8 +161,12 @@ def _run_real_report():
             )
             return writer.execute_task(task, context=writer_context)
 
-        report, _ = generate_validated_report(generate, ranking)
-        audit = verify_report_sources(report, ranking)
+        if api_mode:
+            report, _ = generate_validated_report(generate, ranking, db_path, top_n)
+            audit = verify_report_sources(report, ranking, db_path, top_n)
+        else:
+            report, _ = generate_validated_report(generate, ranking)
+            audit = verify_report_sources(report, ranking)
         return report, audit
 
 

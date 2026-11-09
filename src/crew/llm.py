@@ -59,6 +59,10 @@ async def acall_with_backoff(operation: Callable[[], Awaitable[T]]) -> T:
 
 class ReviewGeminiCompletion(GeminiCompletion):
     _terminal_error: APIError | ProviderConfigurationError | None = PrivateAttr(default=None)
+    _call_guard: Callable[[], None] | None = PrivateAttr(default=None)
+
+    def configure_call_guard(self, guard: Callable[[], None]) -> None:
+        self._call_guard = guard
 
     def call(
         self,
@@ -73,6 +77,12 @@ class ReviewGeminiCompletion(GeminiCompletion):
         if self._terminal_error is not None:
             raise self._terminal_error
         try:
+            if self._call_guard is not None:
+                self._call_guard()
+                return super().call(
+                    messages, tools, callbacks, available_functions,
+                    from_task, from_agent, response_model,
+                )
             return call_with_backoff(
                 lambda: super(ReviewGeminiCompletion, self).call(
                     messages, tools, callbacks, available_functions,
@@ -96,6 +106,12 @@ class ReviewGeminiCompletion(GeminiCompletion):
         if self._terminal_error is not None:
             raise self._terminal_error
         try:
+            if self._call_guard is not None:
+                self._call_guard()
+                return await super().acall(
+                    messages, tools, callbacks, available_functions,
+                    from_task, from_agent, response_model,
+                )
             return await acall_with_backoff(
                 lambda: super(ReviewGeminiCompletion, self).acall(
                     messages, tools, callbacks, available_functions,
