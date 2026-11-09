@@ -214,3 +214,9 @@ Todos os números desta especificação vêm de dados gerados sinteticamente, de
   confirma `/health` e análise determinística com relatório validado.
   Saída LLM inválida é recusada com 500 genérico; timeouts encapsulados
   ou suprimidos são testados com relógio simulado, sem provedor.
+- Smoke test adicional com servidor Uvicorn real em socket `127.0.0.1`
+  efêmero: `/health` 200; `/analisar` sem chave 401; chave efêmera gerada
+  com `secrets.token_urlsafe(32)` e mantida apenas em memória, com CORS local
+  permitido e análise determinística top-1 200; opt-in de LLM sem autorização
+  403. Servidor encerrado ao final. A chave não foi exibida nem persistida;
+  nenhuma chamada ao provedor foi feita.
