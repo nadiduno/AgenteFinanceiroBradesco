@@ -1,6 +1,6 @@
 # Especificação — Detecção experimental de anomalias transacionais
 
-Status: Fases 1–3 concluídas. Fase 5 implementada e validada offline, integrada à Fase 4. Fase 6 concluída e validada offline. Duas tentativas reais anteriores foram bloqueadas pelo provedor (HTTP 404/503); nenhum relatório real foi produzido para auditar. O `.env` local será preenchido pelo usuário; nenhuma chamada ao provedor nesta fase.
+Status: Fases 1–3 concluídas. Fase 5 implementada e validada offline, integrada à Fase 4. Fase 6 concluída; suíte, dry-run e smoke test Uvicorn local aprovados. As tentativas reais autorizadas foram bloqueadas pelo provedor (HTTP 404/503); nenhum relatório real foi produzido para auditar. Não tentar novamente sem modelo acessível no `.env` e nova autorização.
 
 ## 1. Contexto e objetivo
 
@@ -198,7 +198,7 @@ Todos os números desta especificação vêm de dados gerados sinteticamente, de
   e geração reprodutível apenas se o banco estiver ausente.
 - Quota é por processo, não distribuída; múltiplos workers multiplicam o limite.
   Primeira geração simultânea do mesmo banco não é suportada.
-- Não foi exercitado provedor real. Não há deploy nem push nesta etapa.
+- Não há deploy nem push nesta etapa.
 - Suíte completa: **86 testes aprovados** com
   `.venv\Scripts\python.exe -m unittest discover -s tests -v` (328,468 s).
   Após endurecer a tradução de exceções encapsuladas da crew para 429,
@@ -220,3 +220,9 @@ Todos os números desta especificação vêm de dados gerados sinteticamente, de
   permitido e análise determinística top-1 200; opt-in de LLM sem autorização
   403. Servidor encerrado ao final. A chave não foi exibida nem persistida;
   nenhuma chamada ao provedor foi feita.
+- Uma execução real, autorizada em 2026-11-08, falhou imediatamente com
+  HTTP 404: `gemini-2.5-flash` não está disponível para novos usuários; a
+  resposta do provedor recomenda `gemini-3.8-flash`. O cliente não fez retry
+  para 404, conforme política; nenhum relatório ou valor `degradado` foi
+  produzido. Não foi feita uma segunda execução; aguardar atualização do
+  modelo no `.env` e nova autorização.

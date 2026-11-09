@@ -4,17 +4,17 @@
 
 - **Nome:** DataScience.
 - **Projeto:** AgenteFinanceiroBradesco.
-- **Estado:** Fase 6 concluída offline na branch `fase-6`, criada de `7eef22f` preservando mudanças pendentes. FastAPI autenticada, CORS explícito, relatório validado top-1 a top-20 e modo determinístico padrão. Suíte completa final: 90 testes aprovados, 24 da API; compilação, pip check e diff aprovados. Fase 4 permanece pendente de relatório real.
-- **Configuração:** `.env` local ignorado pelo Git e preservado; o usuário preencherá API_ACCESS_KEY, CORS_ORIGINS e as opções de LLM. Nenhuma chave foi lida para exibição ou registrada. Nenhuma chamada ao provedor nem instalação nesta etapa.
+- **Estado:** Fase 6 concluída na branch `fase-6`, criada de `7eef22f` preservando mudanças pendentes. FastAPI autenticada, CORS explícito, relatório validado top-1 a top-20 e modo determinístico padrão. Suíte completa: 90 testes aprovados, 24 da API; compilação, pip check e diff aprovados. Smoke test Uvicorn local passou; uma execução LLM real autorizada falhou em HTTP 404, sem relatório. Fase 4 permanece pendente de relatório real.
+- **Configuração:** `.env` local ignorado pelo Git e preservado; nenhuma chave foi exibida ou registrada. O modelo configurado retornou HTTP 404 por indisponibilidade para novos usuários. Não repetir sem atualização do modelo no `.env` e nova autorização.
 - **Arquivos:** `src/api/app.py`, `tests/test_api.py`, `requirements-hf.txt`, `.env.example`, `README.md`, `SPEC.md`, módulos `src/crew/` e SQLite local ignorado pelo Git.
 - **Decisões:** Dados sintéticos em SQLite; rótulos isolados para avaliação. API sem LLM por padrão; opt-in duplo, quota por chamada/processo, sem retry HTTP na API e timeout cooperativo. CLI continua top-10; guardrails parametrizados exigem a quantidade exata solicitada. HF opcional, sem torch/transformers na lista padrão.
 
 ## Próximo passo
 
-- Fase 6 pronta para execução local com `python -m uvicorn src.api.app:app`, após o usuário preencher o `.env`. Sem chave de API, análise retorna 503; saúde continua pública.
+- Fase 6 pronta para execução local com `python -m uvicorn src.api.app:app`. Sem chave de API, análise retorna 503; saúde continua pública.
 - Limites: quota por processo e geração inicial com um worker; thread/HTTP em curso pode continuar após 504, mas não iniciar novas chamadas.
 - Encerramento solicitado: commit da Fase 6 na branch `fase-6` e parar, sem push. O commit `7eef22f` dos testes da Fase 5/memória é a base da branch; suas alterações foram preservadas.
-- Aguardar nova instrução antes de avançar, instalar, chamar provedor ou publicar. Não fazer push.
+- Não fazer nova chamada ao provedor sem atualizar `LLM_MODEL` para um modelo acessível e obter autorização explícita. Fase 7 aguarda merge de `fase-6` em `main`. Não fazer push.
 
 ## Log de sessões
 
@@ -22,6 +22,7 @@
 
 - 2026-11-08: Fase 6 implementada sem provedor: /health, /analisar, Pydantic estrito top_n 1–20, chave separada, CORS JSON sem wildcard, threadpool, opt-in duplo, orçamento LLM por chamada e timeout. Relatório factual validado inclui degradado; erros e logs correlacionados/sanitizados. Banco ausente gerado com semente 42, existentes preservados; HF opcional. Primeira asserção temporal falhou pela carga da máquina compartilhada; substituída por eventos que comprovam resposta 504 antes de terminar a thread e bloqueio de chamadas posteriores. Suíte completa: 86 testes em 328,468 s; após traduzir também erros encapsulados de quota, dois testes específicos passaram em 65,070 s (87 casos distintos na árvore final, 21 da API). Compilação e diff aprovados. Nenhuma dependência instalada, chamada ao provedor, mudança no .env ou no banco original. Aguardado commit concorrente dos testes/memória por decisão do usuário; commit da Fase 6 e parada solicitados, sem push.
 - 2026-11-08: smoke test solicitado após a Fase 6. Chave da API gerada com `secrets.token_urlsafe(32)`, usada só em memória e não impressa nem persistida. Uvicorn real em localhost/socket efêmero respondeu /health 200; POST sem chave 401; POST autenticado determinístico top-1 200 com relatório válido e CORS permitido; tentativa use_llm=true com ALLOW_LLM=false 403. Processo encerrado; nenhuma chamada ao provedor, edição de `.env`, banco ou código.
+- 2026-11-08: após confirmação explícita, feita uma única execução real do relatório. O provedor respondeu HTTP 404: `gemini-2.5-flash` indisponível para novos usuários e recomendou `gemini-3.8-flash`; falha imediata, sem retries porque 404 é terminal. Nenhum relatório nem `degradado` foi produzido. Não repetir; aguardar troca de modelo e nova autorização. Sem alteração em `.env`, chaves ou banco.
 
 - 2026-11-08: solicitada evidência de `e1d436d`, histórico e cobertura nominal dos sete casos fabricados. Todos já estavam cobertos; criada identificação própria para “90% de chance de fraude” e dois testes positivos (posição 3, “dez casos”, razão histórica; dry-run real revalidado). Relatório local válido passou com razão 18.1612 e auditoria completa; suíte da árvore durante a execução passou com 66 testes. Novas alterações concorrentes da Fase 6 foram detectadas; usuário confirmou aguardar estabilização e excluir esse trabalho do commit. Suíte repetida sobre cópia de `e1d436d` acrescida somente dos três testes: 66 testes aprovados em 123,370 s; todos os 26 guardrails aprovados. Commit separado somente de testes e memória. Nenhuma chamada ao provedor, instalação ou alteração do banco original.
 
