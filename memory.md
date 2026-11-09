@@ -4,21 +4,23 @@
 
 - **Nome:** DataScience.
 - **Projeto:** AgenteFinanceiroBradesco.
-- **Estado:** Fase 5 concluída offline, com evidência adicional: 26 testes de guardrails e suíte de 66 testes aprovados sobre cópia de `e1d436d` acrescida somente de três testes. Relatório válido com posição/contagem/razão e dry-run real revalidado aprovados. Fase 4 permanece pendente de relatório real.
-- **Configuração:** `.env` local ignorado pelo Git; presença da configuração verificada sem imprimir ou registrar a chave. O `.env` ainda contém o identificador de modelo antigo; a segunda tentativa usou o valor autorizado somente no processo e falhou por alta demanda. Não tentar novamente sem atualização do `.env` e nova autorização.
-- **Arquivos:** `src/crew/schemas.py`, `src/crew/guardrails.py`, `src/crew/llm.py`, `src/crew/main.py`, `src/crew/tools.py`, `tests/test_guardrails.py`, `tests/test_phase4.py`, `tests/test_llm_retry.py`, configs YAML, `SPEC.md` e SQLite local ignorado pelo Git.
-- **Decisões:** Dados sintéticos em SQLite; rótulos de fraude isolados em `rotulos_fraude` para avaliação, fora de `transacoes`.
+- **Estado:** Fase 6 concluída offline na branch `fase-6`, criada de `7eef22f` preservando mudanças pendentes. FastAPI autenticada, CORS explícito, relatório validado top-1 a top-20 e modo determinístico padrão. Suíte completa final: 90 testes aprovados, 24 da API; compilação, pip check e diff aprovados. Fase 4 permanece pendente de relatório real.
+- **Configuração:** `.env` local ignorado pelo Git e preservado; o usuário preencherá API_ACCESS_KEY, CORS_ORIGINS e as opções de LLM. Nenhuma chave foi lida para exibição ou registrada. Nenhuma chamada ao provedor nem instalação nesta etapa.
+- **Arquivos:** `src/api/app.py`, `tests/test_api.py`, `requirements-hf.txt`, `.env.example`, `README.md`, `SPEC.md`, módulos `src/crew/` e SQLite local ignorado pelo Git.
+- **Decisões:** Dados sintéticos em SQLite; rótulos isolados para avaliação. API sem LLM por padrão; opt-in duplo, quota por chamada/processo, sem retry HTTP na API e timeout cooperativo. CLI continua top-10; guardrails parametrizados exigem a quantidade exata solicitada. HF opcional, sem torch/transformers na lista padrão.
 
 ## Próximo passo
 
-- Fases 0–3 concluídas; o usuário aprovou o início da Fase 4.
-- Fase 4: três agentes sequenciais, ferramenta numérica top-10, saída pydantic, modo determinístico e authorizer SQLite implementados. Suíte completa: 16 testes aprovados; `pip check`, compilação e dry-run aprovados.
-- Revisão offline de 2026-11-08: 35 testes aprovados com `.venv\Scripts\python.exe -m unittest discover -s tests -v`; compilação e `git diff --check` aprovados. Dry-run completo confirma dez IDs, valores/datas do banco e features; sem chamadas reais.
-- Fase 5: 23 testes originais e três testes de evidência adicionais: frase proibida com nome próprio, relatório válido com posição/contagem/razão histórica e saída real do dry-run revalidada sem provedor.
-- Suíte completa da evidência: 66 testes aprovados, incluindo 26 guardrails, MCP stdio somente leitura e retries HTTP simulados. Executada também em cópia isolada de `e1d436d` para excluir alterações concorrentes da Fase 6.
-- Próximo passo desta verificação: commit separado somente dos testes e desta documentação; não incluir alterações concorrentes da Fase 6 nem chamar o provedor. Aguardar nova instrução; não fazer push.
+- Fase 6 pronta para execução local com `python -m uvicorn src.api.app:app`, após o usuário preencher o `.env`. Sem chave de API, análise retorna 503; saúde continua pública.
+- Limites: quota por processo e geração inicial com um worker; thread/HTTP em curso pode continuar após 504, mas não iniciar novas chamadas.
+- Encerramento solicitado: commit da Fase 6 na branch `fase-6` e parar, sem push. O commit `7eef22f` dos testes da Fase 5/memória é a base da branch; suas alterações foram preservadas.
+- Aguardar nova instrução antes de avançar, instalar, chamar provedor ou publicar. Não fazer push.
 
 ## Log de sessões
+
+- 2026-11-08: usuário solicitou inventário das alterações pendentes e branch exclusiva. `git status`/`diff --stat` conferidos: dez arquivos rastreados modificados e API/testes/extras HF novos, todos relacionados à Fase 6. Criada `fase-6` de `7eef22f` sem conflito, sem reverter alterações. Integração conferida; corrigido timeout encapsulado/suprimido pela crew para manter 504, sem sucesso após expirar. Adicionados testes de saída inválida sem detalhes internos e subprocesso com imports torch/transformers bloqueados. 24 testes da API aprovados; suíte final: 90 testes em 91,468 s. Compilação, pip check e diff aprovados. Nenhuma chamada ao provedor, instalação, edição do .env, alteração do banco original ou push. SPEC atualizada; commit na branch e parada solicitados.
+
+- 2026-11-08: Fase 6 implementada sem provedor: /health, /analisar, Pydantic estrito top_n 1–20, chave separada, CORS JSON sem wildcard, threadpool, opt-in duplo, orçamento LLM por chamada e timeout. Relatório factual validado inclui degradado; erros e logs correlacionados/sanitizados. Banco ausente gerado com semente 42, existentes preservados; HF opcional. Primeira asserção temporal falhou pela carga da máquina compartilhada; substituída por eventos que comprovam resposta 504 antes de terminar a thread e bloqueio de chamadas posteriores. Suíte completa: 86 testes em 328,468 s; após traduzir também erros encapsulados de quota, dois testes específicos passaram em 65,070 s (87 casos distintos na árvore final, 21 da API). Compilação e diff aprovados. Nenhuma dependência instalada, chamada ao provedor, mudança no .env ou no banco original. Aguardado commit concorrente dos testes/memória por decisão do usuário; commit da Fase 6 e parada solicitados, sem push.
 
 - 2026-11-08: solicitada evidência de `e1d436d`, histórico e cobertura nominal dos sete casos fabricados. Todos já estavam cobertos; criada identificação própria para “90% de chance de fraude” e dois testes positivos (posição 3, “dez casos”, razão histórica; dry-run real revalidado). Relatório local válido passou com razão 18.1612 e auditoria completa; suíte da árvore durante a execução passou com 66 testes. Novas alterações concorrentes da Fase 6 foram detectadas; usuário confirmou aguardar estabilização e excluir esse trabalho do commit. Suíte repetida sobre cópia de `e1d436d` acrescida somente dos três testes: 66 testes aprovados em 123,370 s; todos os 26 guardrails aprovados. Commit separado somente de testes e memória. Nenhuma chamada ao provedor, instalação ou alteração do banco original.
 

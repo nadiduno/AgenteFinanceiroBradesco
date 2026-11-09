@@ -32,7 +32,7 @@ class ReportCase(StrictReportModel):
 
 
 class ExecutiveReport(StrictReportModel):
-    casos: list[ReportCase] = Field(min_length=10, max_length=10)
+    casos: list[ReportCase] = Field(min_length=1, max_length=20)
     recomendacoes: list[NonEmptyText] = Field(min_length=1)
     limitacoes: list[NonEmptyText] = Field(min_length=1)
     degradado: bool = False

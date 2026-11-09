@@ -3,13 +3,12 @@ crewai-tools[mcp]
 google-genai
 mcp
 fastmcp
-transformers
-torch
 scikit-learn
 pandas
 pydantic
 fastapi
 uvicorn
+httpx
 python-dotenv
 numpy
 matplotlib

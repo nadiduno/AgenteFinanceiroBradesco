@@ -4,6 +4,7 @@ import sqlite3
 import unicodedata
 from collections.abc import Callable
 from contextlib import closing
+from contextvars import ContextVar
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from src.ml.transaction_anomaly import DEFAULT_DB_PATH
 
 
 LOGGER = logging.getLogger(__name__)
+REQUEST_ID = ContextVar('request_id', default='cli')
 NUMBER = re.compile(r'[-+]?\d+(?:[.,]\d+)*(?:[eE][-+]?\d+)?')
 FORBIDDEN = re.compile(
     r'probabilidad\w*|chance\s+de\s+fraude|fraude\s+confirmad\w*|rotulos_fraude'
@@ -57,7 +59,7 @@ def _tool_numbers(ranking):
     return numbers
 
 
-def validate_report(candidate, ranking, db_path=DEFAULT_DB_PATH):
+def validate_report(candidate, ranking, db_path=DEFAULT_DB_PATH, top_n=10):
     if isinstance(candidate, ExecutiveReport):
         candidate = candidate.model_dump()
     if isinstance(candidate, str):
@@ -67,10 +69,12 @@ def validate_report(candidate, ranking, db_path=DEFAULT_DB_PATH):
     else:
         raise ValueError('O Redator deve retornar um objeto JSON de relatório.')
     report = parsed.model_dump()
-    if len(ranking) != 10 or [row['posicao'] for row in ranking] != list(range(1, 11)):
-        raise ValueError('A ferramenta deve retornar exatamente dez posições ordenadas.')
+    if type(top_n) is not int or not 1 <= top_n <= 20:
+        raise ValueError('top_n deve ser inteiro entre 1 e 20.')
+    if len(ranking) != top_n or [row['posicao'] for row in ranking] != list(range(1, top_n + 1)):
+        raise ValueError('A ferramenta deve retornar exatamente as posições solicitadas.')
     expected_ids = [row['id_transacao'] for row in ranking]
-    if len(set(expected_ids)) != 10:
+    if len(set(expected_ids)) != top_n:
         raise ValueError('A ferramenta retornou IDs duplicados.')
 
     cited_ids = [case['id_transacao'] for case in report['casos']]
@@ -148,18 +152,25 @@ def validate_report(candidate, ranking, db_path=DEFAULT_DB_PATH):
 
 def generate_validated_report(
     generate: Callable[[str | None], object], ranking, db_path=DEFAULT_DB_PATH,
+    top_n=10,
 ):
     error_message = None
     for attempt in range(2):
         candidate = generate(error_message)
         try:
-            report, audit = validate_report(candidate, ranking, db_path)
+            report, audit = validate_report(candidate, ranking, db_path, top_n)
             report['degradado'] = False
             return report, audit
         except ValueError as error:
             error_message = str(error)
-            LOGGER.warning('Relatório rejeitado na tentativa %s: %s', attempt + 1, error_message)
-    LOGGER.error('Correção rejeitada; devolvendo relatório determinístico degradado.')
+            LOGGER.warning(
+                'request_id=%s relatório rejeitado na tentativa %s.',
+                REQUEST_ID.get(), attempt + 1,
+            )
+    LOGGER.error(
+        'request_id=%s correção rejeitada; devolvendo relatório determinístico degradado.',
+        REQUEST_ID.get(),
+    )
     fallback = build_deterministic_report(ranking)
     fallback['degradado'] = True
-    return validate_report(fallback, ranking, db_path)
+    return validate_report(fallback, ranking, db_path, top_n)
