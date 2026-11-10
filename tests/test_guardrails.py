@@ -363,7 +363,7 @@ class GuardrailTests(unittest.TestCase):
             patch.object(crewai, 'Agent', side_effect=[analyst, scientist, writer]),
             patch.object(crewai, 'Crew') as crew,
             patch.object(crewai, 'Task', side_effect=lambda **kwargs: Mock(**kwargs)) as task,
-            patch.object(mcp_adapter, 'MCPServerAdapter', return_value=adapter),
+            patch.object(mcp_adapter, 'MCPServerAdapter', return_value=adapter) as mcp,
             patch.object(crew_main, 'generate_validated_report', side_effect=lambda generate, ranking:
                          generate_validated_report(generate, ranking, self.db_path)),
             patch.object(crew_main, 'verify_report_sources', side_effect=lambda report, ranking:
@@ -375,6 +375,7 @@ class GuardrailTests(unittest.TestCase):
         self.assertEqual(report, self.report)
         crew.return_value.kickoff.assert_called_once()
         self.assertEqual(writer.execute_task.call_count, 2)
+        self.assertEqual(mcp.call_args.kwargs['connect_timeout'], 60)
         executive_calls = task.call_args_list[-2:]
         self.assertNotIn('output_pydantic', executive_calls[0].kwargs)
         self.assertIn('json_invalid', executive_calls[1].kwargs['description'])

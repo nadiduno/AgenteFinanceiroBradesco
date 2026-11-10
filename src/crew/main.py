@@ -107,7 +107,7 @@ def _run_real_report(top_n=10, db_path=DEFAULT_DB_PATH, call_guard=None, timeout
             if api_mode else None
         ),
     )
-    with MCPServerAdapter(mcp_parameters) as mcp_tools:
+    with MCPServerAdapter(mcp_parameters, connect_timeout=60) as mcp_tools:
         analyst = Agent(
             config=agents_config['analista_sql'],
             llm=llm,
