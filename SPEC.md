@@ -206,7 +206,8 @@ Todos os números desta especificação vêm de dados gerados sinteticamente, de
   `.venv\Scripts\python.exe -m unittest discover -s tests -p test_api.py -k rate_limit -v`
   (65,070 s). São 87 casos distintos na árvore final, 21 deles da API.
   Compilação de `src`/`tests` e `git diff --check` aprovados.
-- Conclusão na branch `fase-6`, criada de `7eef22f` com todas as alterações
+- Conclusão na branch `fase-6`, criada a partir do checkpoint de encerramento
+  da Fase 5 com todas as alterações
   pendentes preservadas, sem conflito. Suíte completa final: **90 testes
   aprovados** (91,468 s), incluindo **24 da API**. `pip check`, compilação
   e `git diff --check` aprovados; nenhuma dependência instalada.

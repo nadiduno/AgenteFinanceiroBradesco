@@ -1,6 +1,6 @@
 # AgenteFinanceiroBradesco
 
-> **Projeto independente, sem vínculo com o Bradesco. Todos os dados são 100% sintéticos. Nunca use dados reais de clientes.**
+> **Projeto educacional desenvolvido no bootcamp da DIO. Não é um produto oficial do Bradesco e usa apenas dados 100% sintéticos. Nunca use dados reais de clientes.**
 
 Este projeto demonstra um fluxo de priorização de transações para revisão humana. Consultas SQL/MCP fornecem dados a uma etapa de ranking numérico; uma etapa opcional de storytelling pode produzir um relatório estruturado, sujeito a guardrails antes de ser exposto pela API. O modo padrão é determinístico e não chama um provedor de LLM.
 
@@ -50,6 +50,21 @@ Gere um relatório determinístico, sem inicializar MCP ou LLM:
 
 ```powershell
 python -m src.crew.main --dry-run
+```
+
+### Exemplo de saída
+
+Trecho abreviado de uma execução local do comando acima (resumos encurtados):
+
+```json
+{
+  "casos": [
+    {"id_transacao": 3540, "posicao": 1, "resumo": "Prioridade de revisão; PIX web no Rio de Janeiro; R$ 5.616,46 ..."},
+    {"id_transacao": 988, "posicao": 2, "resumo": "Prioridade de revisão; PIX app no Rio de Janeiro; R$ 15.172,14 ..."},
+    {"id_transacao": 4682, "posicao": 3, "resumo": "Prioridade de revisão; PIX app em São Paulo; R$ 1.586,02 ..."}
+  ],
+  "degradado": false
+}
 ```
 
 Configure o arquivo `.env` a partir de [.env.example](./.env.example). Não versione `.env` nem compartilhe chaves. Inicie a API:
@@ -119,15 +134,16 @@ Não coloque `API_ACCESS_KEY` em código de front-end: uma chave embutida no nav
 ## Estrutura do repositório
 
 ```text
+config/         configuração de agentes e tarefas
+docs/           especificação e guias do projeto
+mcp_servers/    servidor MCP SQLite (`sqlite_server.py`)
 src/
   api/          API FastAPI
   crew/         fluxo de agentes, relatório e guardrails
-  mcp/          ferramenta/servidor MCP para consultas
-  models/       ranking e modelos numéricos
+  ml/           ranking/modelo de anomalias transacionais
   utils/        geração da base sintética
 tests/          testes offline e de integração simulada
-data/           base SQLite local (não versionada)
-docs/           documentação de apoio
+data/           base SQLite local, gerada e não versionada
 ```
 
 ## Próximos passos
