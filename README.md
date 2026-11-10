@@ -1,52 +1,137 @@
 # AgenteFinanceiroBradesco
-Sistema de Agentes de IA autônomos e orquestrados com CrewAI para apoio à tomada de decisão financeira e detecção de anomalias em transações bancárias. Integração de servidor MCP (Model Context Protocol) em Python para consumo de bases de dados relacionais via SQL, exposto com interface em Lovable 
 
-## API experimental (Fase 6)
+> **Projeto independente, sem vínculo com o Bradesco. Todos os dados são 100% sintéticos. Nunca use dados reais de clientes.**
 
-Instale `requirements.txt` e execute `python -m uvicorn src.api.app:app`.
-`torch` e `transformers` não são necessários para o modelo numérico padrão;
-para a comparação experimental Hugging Face, instale `requirements-hf.txt`.
+Este projeto demonstra um fluxo de priorização de transações para revisão humana. Consultas SQL/MCP fornecem dados a uma etapa de ranking numérico; uma etapa opcional de storytelling pode produzir um relatório estruturado, sujeito a guardrails antes de ser exposto pela API. O modo padrão é determinístico e não chama um provedor de LLM.
 
-Preencha o `.env` a partir de `.env.example`:
+## Arquitetura
 
-- `API_ACCESS_KEY`: chave própria da API, **diferente** de `GEMINI_API_KEY`.
-  Sem configuração, `/analisar` fica indisponível (503); `/health` é público.
-- `CORS_ORIGINS`: array JSON de origens exatas, por exemplo
-  `["http://localhost:3000"]`, sem barra final ou wildcard. Padrão `[]`.
-  Requisições com origem não permitida, inclusive preflight, recebem 403.
-- `DATABASE_URL`: arquivo SQLite local. Se ausente, a inicialização gera
-  5.000 transações sintéticas com semente 42; bancos existentes são preservados.
-- `ALLOW_LLM=false`: padrão sem provedor. Só `ALLOW_LLM=true` **e**
-  `use_llm=true` habilitam LLM; opt-in bloqueado recebe 403, sem fallback silencioso.
-- `LLM_MAX_CALLS_PER_MINUTE=5`: janela móvel de 60 segundos compartilhada
-  pelas requisições do mesmo processo; conta chamadas nativas, não relatórios.
-- `LLM_TIMEOUT_SECONDS=60`: prazo da execução LLM (positivo, até 300 segundos)
-  e timeout do SDK. A API não faz retries HTTP do provedor.
+```mermaid
+flowchart LR
+    DB[(SQLite<br/>dados sintéticos)] --> SQL[SQL / MCP<br/>consulta somente leitura]
+    SQL --> ML[ML<br/>ranking numérico]
+    ML --> STORY[Storytelling<br/>LLM opcional]
+    STORY --> GUARD[Guardrails<br/>schema e validação factual]
+    ML --> GUARD
+    GUARD --> API[FastAPI<br/>modo determinístico padrão]
+```
 
-### Endpoints
+O relatório é uma ajuda à revisão, não uma decisão automatizada. Quando o LLM está habilitado, sua saída ainda precisa passar pela validação; uma falha resulta em uma nova tentativa e, se necessário, no relatório determinístico degradado.
 
-- `GET /health`: `{"status":"ok"}`.
-- `POST /analisar`: cabeçalho `X-API-Key` obrigatório; JSON
-  `{"top_n":10,"use_llm":false}` (campos opcionais; `top_n` inteiro de 1 a 20).
-  Devolve diretamente o relatório validado da Fase 5, incluindo `degradado`;
-  não devolve auditoria, descrições livres nem rótulos. A CLI continua top-10.
+## Requisitos
 
-Entrada inválida recebe 422; chave ausente/incorreta, 401; limite LLM, 429;
-timeout, 504; falha interna, 500. Erros são genéricos, com `request_id`
-também no cabeçalho `X-Request-ID` e nos logs. Logs de dependências durante
-a requisição são reduzidos a evento/nível e ID, sem payloads ou traceback.
+- Python 3.11 (validado com a versão 3.11.9).
+- Windows PowerShell nos exemplos abaixo; adapte os comandos de ativação para o seu shell.
+- Para execução real com LLM: credencial autorizada do provedor configurada localmente. O fluxo `--dry-run` e a API determinística não precisam dessa credencial.
 
-Modelo numérico e crew executam em threadpool. Um timeout devolve 504 e
-impede novas chamadas daquele trabalho, mas não mata uma thread ou chamada
-HTTP já em curso; esta permanece sujeita ao timeout do SDK. Para múltiplos
-workers/réplicas, o limite por processo não constitui uma quota global:
-use um limitador distribuído antes de escalar. Geração inicial simultânea
-do mesmo banco por múltiplos workers não é suportada; inicialize com um worker.
-Se a crew encapsular ou suprimir o erro de prazo, a resposta continua 504,
-sem apresentar o resultado daquele trabalho como sucesso.
+## Instalação e execução
 
-Os scores são heurísticos em dados sintéticos, não probabilidades nem evidência
-de eficácia em fraude real. O ranking usa a base inteira para revisão, não
-avaliação de desempenho. Não use o relatório para decisões financeiras reais.
+Crie e ative um ambiente virtual e instale as dependências:
 
-Testes offline: `python -m unittest discover -s tests -v`.
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+```
+
+Crie a base sintética padrão em `data/transacoes.db` somente se ela ainda não existir:
+
+```powershell
+if (-not (Test-Path .\data\transacoes.db)) {
+    python -m src.utils.db_gen
+} else {
+    Write-Error "A base já existe; preserve-a ou faça backup antes de regenerar."
+}
+```
+
+> **Atenção:** executar `python -m src.utils.db_gen` diretamente recria as tabelas da base indicada e substitui os dados existentes. Os arquivos `data/*.db` são ignorados pelo Git e não são distribuídos no repositório.
+
+Gere um relatório determinístico, sem inicializar MCP ou LLM:
+
+```powershell
+python -m src.crew.main --dry-run
+```
+
+Configure o arquivo `.env` a partir de [.env.example](./.env.example). Não versione `.env` nem compartilhe chaves. Inicie a API:
+
+```powershell
+python -m uvicorn src.api.app:app --host 127.0.0.1 --port 8000
+```
+
+`GET /health` verifica a disponibilidade. `POST /analisar` exige o cabeçalho `X-API-Key` e aceita, por exemplo, `{"top_n":10,"use_llm":false}`. A chave de acesso da API é distinta da chave do provedor. Para integrar um front-end, consulte [Integração com Lovable](#integração-com-lovable).
+
+Execute os testes offline:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+Para a comparação experimental com Hugging Face, as dependências são opcionais:
+
+```powershell
+python -m pip install -r requirements-hf.txt
+```
+
+## Configuração
+
+| Variável | Finalidade | Comportamento padrão / observação |
+|---|---|---|
+| `DATABASE_URL` | Caminho/URL do banco SQLite | Usa a base sintética local padrão; bancos existentes são preservados na inicialização da API. |
+| `API_ACCESS_KEY` | Autenticação de `POST /analisar` | Sem configuração, a análise fica indisponível. Gere uma chave forte e mantenha-a fora do código e do navegador. |
+| `CORS_ORIGINS` | Origens permitidas para CORS | Lista JSON de origens exatas; padrão vazio. Não use wildcard em produção. |
+| `ALLOW_LLM` | Permite opt-in de chamadas ao LLM pela API | `false`; requer também `use_llm=true` na requisição para habilitar. |
+| `GEMINI_API_KEY` | Credencial do provedor Gemini | Necessária somente para execução real com o provedor; nunca publique. |
+| `LLM_MODEL` | Modelo configurado para a integração | Necessário somente com LLM habilitado; disponibilidade e geração real dependem do provedor. |
+| `LLM_MAX_CALLS_PER_MINUTE` | Limite de chamadas LLM por processo | Padrão `5`; não é um limite global entre múltiplas réplicas. |
+| `LLM_TIMEOUT_SECONDS` | Prazo da execução LLM | Padrão `60` segundos; valor máximo `300`. |
+
+Os nomes acima são variáveis, não valores de credenciais. Consulte `.env.example` para o formato esperado, sem inserir segredos em arquivos versionados.
+
+## Resultados experimentais — Fase 3
+
+| Configuração | PR-AUC | Precisão@100 |
+|---|---:|---:|
+| Apenas variáveis numéricas | 0,775 | 25,0% ± 0,00 p.p. |
+| Numéricas + texto com Hugging Face | 0,733 | 25,2% ± 0,84 p.p. |
+| Numéricas + TF-IDF | 0,557 | 20,6% ± 0,55 p.p. |
+
+Esses resultados são exploratórios: a base é sintética e o gerador foi ajustado após a observação de resultados preliminares, portanto não representam uma avaliação independente nem eficácia em dados reais. As diferenças de precisão@100 entre numéricas e Hugging Face estão dentro do ruído observado; o texto não demonstrou ganho consistente. TF-IDF teve resultado inferior nesta configuração. Não extrapole essas métricas para operações reais.
+
+## Guardrails e limitações
+
+- Schemas Pydantic estritos rejeitam campos extras e campos obrigatórios ausentes.
+- IDs do relatório são conferidos contra o banco e contra o conjunto retornado pela ferramenta, incluindo o limite solicitado de resultados.
+- Valores, datas, cidades e números citados precisam ser sustentados pelos dados disponíveis à ferramenta.
+- A saída deve respeitar os campos, fatores e restrições de linguagem definidos para o relatório. São proibidas afirmações de probabilidade, “chance de fraude”, percentuais associados a fraude, “fraude confirmada” e referências a `rotulos_fraude`. A redação usa “prioridade de revisão” e “suspeita”.
+- Se a geração falhar na validação, há uma tentativa de correção; se ela também falhar, retorna-se o relatório determinístico validado com `degradado=true`.
+- Os scores são heurísticos e **não são probabilidades**. O ranking considera a base inteira disponível; não é uma avaliação temporal nem uma medida de desempenho em produção.
+- A execução real do LLM não está validada por um relatório bem-sucedido: a tentativa mais recente com `gemini-3.8-flash` terminou em HTTP 504, sem relatório. A API e o modo determinístico foram testados separadamente.
+- A chave CORS limita origens de navegador, mas não substitui autenticação, autorização, TLS ou controles de abuso. O limite LLM é por processo; trabalhos em thread que atinjam timeout podem continuar até o timeout do SDK.
+
+Não use este projeto para decisões financeiras reais ou para tratar qualquer transação como fraude confirmada.
+
+## Integração com Lovable
+
+A aplicação Lovable precisa alcançar uma **URL pública** da API, fornecida por uma hospedagem ou por um túnel de desenvolvimento. Configure `CORS_ORIGINS` com a origem exata do front-end e envie `X-API-Key` nas chamadas a `POST /analisar`.
+
+Não coloque `API_ACCESS_KEY` em código de front-end: uma chave embutida no navegador pode ser extraída. Para uma integração pública, use um backend/proxy sob seu controle para guardar a chave e encaminhar as chamadas. HTTPS, gestão de segredos e controles de acesso são responsabilidade do ambiente de hospedagem.
+
+## Estrutura do repositório
+
+```text
+src/
+  api/          API FastAPI
+  crew/         fluxo de agentes, relatório e guardrails
+  mcp/          ferramenta/servidor MCP para consultas
+  models/       ranking e modelos numéricos
+  utils/        geração da base sintética
+tests/          testes offline e de integração simulada
+data/           base SQLite local (não versionada)
+docs/           documentação de apoio
+```
+
+## Próximos passos
+
+- Repetir a execução real do LLM quando o provedor estiver estável e houver autorização explícita; avaliar o relatório completo, não apenas a conectividade.
+- Fazer avaliação com protocolo independente e congelado antes de qualquer ajuste do gerador ou dos modelos.
+- Antes de uma implantação pública, configurar URL/TLS, segredos no servidor, proxy para o Lovable, controles globais de taxa e monitoramento operacional.

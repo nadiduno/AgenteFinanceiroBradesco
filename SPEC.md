@@ -1,6 +1,6 @@
 # Especificação — Detecção experimental de anomalias transacionais
 
-Status: Fases 1–3 concluídas. Fase 5 implementada e validada offline, integrada à Fase 4. Fase 6 concluída; suíte, dry-run e smoke test Uvicorn local aprovados. As tentativas reais autorizadas foram bloqueadas pelo provedor (HTTP 404/503); nenhum relatório real foi produzido para auditar. Não tentar novamente sem modelo acessível no `.env` e nova autorização.
+Status: Fases 1–3 concluídas. Fase 5 implementada e validada offline, integrada à Fase 4. Fase 6 concluída e mesclada em `main`; suíte e smoke test Uvicorn local aprovados. Fase 7 concluída: README atualizado para avaliação técnica, sem push. Execuções reais autorizadas: HTTP 404 com o modelo antigo; HTTP 504 (`DEADLINE_EXCEEDED`) com `gemini-3.8-flash`, sem relatório. Aguardar nova autorização antes de outra chamada.
 
 ## 1. Contexto e objetivo
 
@@ -32,7 +32,7 @@ Resultado na base regenerada e semanticamente consistente (corte temporal 2023-1
 | Numéricas + texto Hugging Face | 0,7329 ± 0,0118 | 25,2% ± 0,84 pp | 8,40× ± 0,28 |
 | Numéricas + TF-IDF compacto | 0,5567 ± 0,0190 | 20,6% ± 0,55 pp | 6,87× ± 0,18 |
 
-O score Hugging Face foi calculado no ranking HF combinado; o cenário numérico continua sendo o controle. Cada valor de precision@100 corresponde, em média, a 25,0, 25,2 e 20,6 fraudes entre os cem primeiros, respectivamente. Há apenas um corte temporal e uma base sintética; a variação das cinco sementes mede a aleatoriedade do Isolation Forest, não a incerteza entre novas amostras. Trate as diferenças como dentro do ruído experimental desta avaliação, sem alegação de superioridade. O README futuro deve repetir explicitamente esta ressalva.
+O score Hugging Face foi calculado no ranking HF combinado; o cenário numérico continua sendo o controle. Cada valor de precision@100 corresponde, em média, a 25,0, 25,2 e 20,6 fraudes entre os cem primeiros, respectivamente. Há apenas um corte temporal e uma base sintética; a variação das cinco sementes mede a aleatoriedade do Isolation Forest, não a incerteza entre novas amostras. Trate as diferenças como dentro do ruído experimental desta avaliação, sem alegação de superioridade. O README registra essas ressalvas.
 
 ### Variação histórica da PR-AUC
 
@@ -226,3 +226,28 @@ Todos os números desta especificação vêm de dados gerados sinteticamente, de
   para 404, conforme política; nenhum relatório ou valor `degradado` foi
   produzido. Não foi feita uma segunda execução; aguardar atualização do
   modelo no `.env` e nova autorização.
+- Após atualizar a configuração para `gemini/gemini-3.8-flash`, uma única
+  execução autorizada chegou ao provedor e recebeu HTTP 504
+  (`DEADLINE_EXCEEDED`). Não houve retry automático para esse status, relatório
+  nem valor `degradado`; não repetir nem alternar modelo sem nova autorização.
+- Uma execução subsequente não chegou ao provedor: a inicialização MCP excedeu
+  o timeout padrão de 30 s. O servidor foi reproduzido localmente, conectou em
+  aproximadamente 42 s com `connect_timeout=60`, e o fluxo CLI passou a dar
+  esse prazo explícito. Teste de integração confirma o valor; sem chamada LLM.
+
+## 12. Fase 7 — README
+
+- [x] Documentado o objetivo do projeto, o fluxo SQL/MCP → ML → storytelling
+  → guardrails → API e o modo determinístico padrão.
+- [x] Aviso destacado de projeto independente, dados 100% sintéticos e
+  proibição de usar dados reais de clientes.
+- [x] Instruções para ambiente virtual, instalação, geração segura do banco,
+  `--dry-run`, API, testes e variáveis de ambiente sem valores de credenciais.
+- [x] Resultados PR-AUC e precision@100 da Fase 3 com ressalvas sobre dados
+  sintéticos, ajuste do gerador após observação dos resultados, diferenças
+  dentro do ruído e ausência de ganho demonstrado pelo texto.
+- [x] Descritos os guardrails, linguagem proibida, limitações do score/ranking,
+  estado da execução real de LLM e integração com Lovable via URL pública,
+  CORS e chave de acesso protegida.
+- [x] Incluídos estrutura de pastas e próximos passos. Suíte existente após a
+  correção MCP: 90 testes aprovados; nenhuma chamada adicional ao provedor.
